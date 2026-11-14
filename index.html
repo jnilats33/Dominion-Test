@@ -1607,16 +1607,50 @@
       if (container) container.scrollTop = container.scrollHeight;
     }
 
-    function handleChatImageSelect(event) {
-      const file = event.target.files[0];
+    async function handleChatImageSelect(event) {
+      const file = event.target.files && event.target.files[0];
       if (!file) return;
-      const reader = new FileReader();
-      reader.onload = (e) => {
-        pendingChatImage = e.target.result;
-        document.getElementById('chat-preview-img').src = pendingChatImage;
-        document.getElementById('chat-attachment-preview').classList.remove('hidden');
-      };
-      reader.readAsDataURL(file);
+      pendingChatImage = null;
+      const preview = document.getElementById('chat-attachment-preview');
+      const previewImg = document.getElementById('chat-preview-img');
+      preview.classList.add('hidden');
+      try {
+        if (!file.type.startsWith('image/')) throw new Error('Die ausgewählte Datei ist kein Bild.');
+        const dataUrl = await new Promise((resolve, reject) => {
+          const reader = new FileReader();
+          reader.onload = () => resolve(reader.result);
+          reader.onerror = () => reject(new Error('Das Bild konnte nicht eingelesen werden.'));
+          reader.readAsDataURL(file);
+        });
+        const img = await new Promise((resolve, reject) => {
+          const image = new Image();
+          image.onload = () => resolve(image);
+          image.onerror = () => reject(new Error('Dieses Bildformat kann der Browser nicht anzeigen.'));
+          image.src = dataUrl;
+        });
+        // Resize and convert to JPEG for reliable cross-device delivery and
+        // to avoid oversized Firebase room writes from phone camera photos.
+        const maxSide = 1280;
+        const scale = Math.min(1, maxSide / Math.max(img.naturalWidth, img.naturalHeight));
+        const canvas = document.createElement('canvas');
+        canvas.width = Math.max(1, Math.round(img.naturalWidth * scale));
+        canvas.height = Math.max(1, Math.round(img.naturalHeight * scale));
+        const ctx = canvas.getContext('2d');
+        if (!ctx) throw new Error('Bildverarbeitung wird nicht unterstützt.');
+        ctx.fillStyle = '#ffffff';
+        ctx.fillRect(0, 0, canvas.width, canvas.height);
+        ctx.drawImage(img, 0, 0, canvas.width, canvas.height);
+        const converted = canvas.toDataURL('image/jpeg', 0.75);
+        if (!converted.startsWith('data:image/jpeg')) throw new Error('Bildumwandlung fehlgeschlagen.');
+        pendingChatImage = converted;
+        previewImg.src = converted;
+        preview.classList.remove('hidden');
+        showToast('Bild bereit zum Senden.', 'success');
+      } catch (error) {
+        console.warn('Bildauswahl fehlgeschlagen:', error);
+        clearChatAttachment();
+        showToast(error.message || 'Bild konnte nicht verarbeitet werden.', 'error');
+      }
     }
 
     function clearChatAttachment() {
