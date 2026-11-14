@@ -1509,6 +1509,21 @@
       return Math.floor(total / 60) + ':' + String(total % 60).padStart(2, '0');
     }
 
+    // Audio in older backups was sometimes tagged as WebM even though its
+    // actual container is Ogg. Inspect the file signature before playback.
+    function correctedAudioDataUrl(value) {
+      if (typeof value !== 'string' || !value.startsWith('data:audio/')) return value;
+      const comma = value.indexOf(',');
+      if (comma < 0) return value;
+      const header = value.slice(0, comma);
+      const payload = value.slice(comma + 1);
+      if (!/;base64$/i.test(header)) return value;
+      // "OggS" = T2dnUw; EBML/WebM = GkXf; ftyp = MP4.
+      if (payload.startsWith('T2dnUw')) return 'data:audio/ogg;base64,' + payload;
+      if (payload.startsWith('GkXf')) return 'data:audio/webm;base64,' + payload;
+      return value;
+    }
+
     function renderChat() {
       const mName = getDisplayName('Master');
       const dName = getDisplayName('Daisy');
@@ -1538,7 +1553,7 @@
                 : 'bg-[#1e2230] text-slate-100 border border-slate-800 rounded-bl-sm'
             }">
               ${msg.image ? `<img src="${msg.image}" alt="Anhang" class="rounded-xl max-h-56 w-auto mb-2 border border-black/20" />` : ''}
-              ${msg.audio ? `<audio controls preload="metadata" src="${msg.audio}" class="max-w-full h-9 mb-1"></audio><span class="block text-[10px] opacity-70" data-audio-duration>${durationLabel}</span>` : ''}
+              ${msg.audio ? `<audio controls preload="metadata" src="${correctedAudioDataUrl(msg.audio)}" class="max-w-full h-9 mb-1"></audio><span class="block text-[10px] opacity-70" data-audio-duration>${durationLabel}</span>` : ''}
               ${msg.text ? `<p class="whitespace-pre-wrap break-words leading-relaxed">${escapeHtml(msg.text)}</p>` : ''}
             </div>
           </div>
@@ -1583,7 +1598,10 @@
       if (!isRecordingAudio) {
         try {
           const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
-          mediaRecorder = new MediaRecorder(stream);
+          // Prefer WebM/Opus on Android/Chromium, but respect actual support.
+          const preferredTypes = ['audio/webm;codecs=opus', 'audio/webm', 'audio/mp4', 'audio/ogg;codecs=opus'];
+          const chosenType = preferredTypes.find(type => MediaRecorder.isTypeSupported(type));
+          mediaRecorder = chosenType ? new MediaRecorder(stream, { mimeType: chosenType }) : new MediaRecorder(stream);
           recordingStartedAt = Date.now();
           audioChunks = [];
           mediaRecorder.ondataavailable = e => {
@@ -1595,7 +1613,7 @@
               showToast('Keine Audiodaten aufgenommen.', 'error');
               return;
             }
-            const actualMimeType = mediaRecorder.mimeType || (audioChunks[0] && audioChunks[0].type) || 'application/octet-stream';
+            const actualMimeType = (audioChunks[0] && audioChunks[0].type) || mediaRecorder.mimeType || 'application/octet-stream';
             const blob = new Blob(audioChunks, { type: actualMimeType });
             const reader = new FileReader();
             const audioProbe = new Audio();
@@ -1636,7 +1654,7 @@
             };
             audioProbe.src = objectUrl;
             reader.onload = () => {
-              audioDataUrl = reader.result;
+              audioDataUrl = correctedAudioDataUrl(reader.result);
               fileReady = true;
               finalizeMessage();
             };
