@@ -1524,6 +1524,21 @@
       return value;
     }
 
+    let chatAudioObjectUrls = [];
+
+    function audioBlobUrl(dataUrl) {
+      const fixed = correctedAudioDataUrl(dataUrl);
+      if (typeof fixed !== 'string' || !fixed.startsWith('data:')) return fixed;
+      const match = /^data:([^;,]+);base64,(.*)$/s.exec(fixed);
+      if (!match) return fixed;
+      const binary = atob(match[2]);
+      const bytes = new Uint8Array(binary.length);
+      for (let i = 0; i < binary.length; i++) bytes[i] = binary.charCodeAt(i);
+      const url = URL.createObjectURL(new Blob([bytes], { type: match[1] }));
+      chatAudioObjectUrls.push(url);
+      return url;
+    }
+
     function renderChat() {
       const mName = getDisplayName('Master');
       const dName = getDisplayName('Daisy');
@@ -1538,6 +1553,8 @@
         return;
       }
 
+      chatAudioObjectUrls.forEach(url => URL.revokeObjectURL(url));
+      chatAudioObjectUrls = [];
       container.innerHTML = messages.map(msg => {
         const isMine = msg.sender === currentRole;
         const senderDisplay = getDisplayName(msg.sender);
@@ -1553,14 +1570,29 @@
                 : 'bg-[#1e2230] text-slate-100 border border-slate-800 rounded-bl-sm'
             }">
               ${msg.image ? `<img src="${msg.image}" alt="Anhang" class="rounded-xl max-h-56 w-auto mb-2 border border-black/20" />` : ''}
-              ${msg.audio ? `<audio controls preload="metadata" src="${correctedAudioDataUrl(msg.audio)}" class="max-w-full h-9 mb-1"></audio><span class="block text-[10px] opacity-70" data-audio-duration>${durationLabel}</span>` : ''}
+              ${msg.audio ? `<audio controls preload="metadata" src="" data-audio-message-id="${escapeHtml(String(msg.id || ''))}" class="max-w-full h-9 mb-1"></audio><span class="block text-[10px] opacity-70" data-audio-duration>${durationLabel}</span>` : ''}
               ${msg.text ? `<p class="whitespace-pre-wrap break-words leading-relaxed">${escapeHtml(msg.text)}</p>` : ''}
             </div>
           </div>
         `;
       }).join('');
 
-      container.querySelectorAll('audio').forEach(audio => {
+      const audioMessages = messages.filter(msg => msg.audio);
+      container.querySelectorAll('audio').forEach((audio, index) => {
+        const msg = audioMessages[index];
+        try {
+          audio.src = audioBlobUrl(msg.audio);
+          audio.load();
+        } catch (error) {
+          console.warn('Audio-Blob konnte nicht geladen werden:', error);
+          const label = audio.parentElement.querySelector('[data-audio-duration]');
+          if (label) label.textContent = 'Audio konnte nicht geladen werden';
+        }
+        audio.addEventListener('error', () => {
+          const label = audio.parentElement.querySelector('[data-audio-duration]');
+          if (label) label.textContent = 'Audioformat nicht abspielbar (' + (audio.error?.code || '?') + ')';
+        });
+
         audio.addEventListener('loadedmetadata', () => {
           const label = audio.parentElement.querySelector('[data-audio-duration]');
           if (label && Number.isFinite(audio.duration) && audio.duration > 0) {
