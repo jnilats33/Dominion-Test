@@ -802,6 +802,7 @@
   <script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-app-compat.js"></script>
   <script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-database-compat.js"></script>
   <script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-auth-compat.js"></script>
+  <script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-app-check-compat.js"></script>
   <script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-functions-compat.js"></script>
   <script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-messaging-compat.js"></script>
 
@@ -817,6 +818,7 @@
     const DEFAULT_FB_URL = 'https://dominionapp-45bfa-default-rtdb.europe-west1.firebasedatabase.app';
     const DEFAULT_ROOM_CODE = 'dominion-test-20261114-isolated';
     const FIREBASE_WEB_CONFIG = {"apiKey":"AIzaSyC3YyPJsXsX-u2EHKHcByPVj1Ru2Fn3YPo","authDomain":"dominionapp-45bfa.firebaseapp.com","databaseURL":"https://dominionapp-45bfa-default-rtdb.europe-west1.firebasedatabase.app","projectId":"dominionapp-45bfa","storageBucket":"dominionapp-45bfa.firebasestorage.app","messagingSenderId":"1047436704498","appId":"1:1047436704498:web:4b7f9b229b5ad7cc0fee6b"};
+    const APP_CHECK_SITE_KEY = '6Lf8qCEuAAAAAMZqG3IpnbUZJyKqeUppFurGChqL';
     const FCM_VAPID_KEY = 'BIjo1CgqJnE-B12MQNhsc-PBNigNW1JhuPz241wPvVnveqnlrPOxBblc0bVt5ZNBGuzODM1fj83ibkb_hgnGVaU';
     const MGMT_CATEGORIES = [
       { id: 'kleidung', label: '👗 Kleidung', singular: 'Kleidung' },
@@ -1039,12 +1041,25 @@
             return;
           }
         }
+        initTestAppCheck();
         attachFirebaseListener(safeRoomPath);
         initTestAuth();
         initFCM(fbUrl);
       } catch (err) {
         console.warn('Firebase Init Fallback:', err);
         updateSyncIndicator(false);
+      }
+    }
+
+    function initTestAppCheck() {
+      try {
+        firebase.appCheck().activate(
+          new firebase.appCheck.ReCaptchaEnterpriseProvider(APP_CHECK_SITE_KEY),
+          true
+        );
+        console.info('Dominion-Test App Check initialized.');
+      } catch (error) {
+        console.warn('App Check initialization failed:', error);
       }
     }
 
