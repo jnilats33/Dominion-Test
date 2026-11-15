@@ -4,11 +4,13 @@ importScripts('https://www.gstatic.com/firebasejs/10.7.1/firebase-messaging-comp
 
 // Firebase Konfiguration für den Service Worker
 firebase.initializeApp({
-  apiKey: "AIzaSyD-DominionAppPlaceholderKey", // Entspricht deiner Firebase-Konfiguration
-  projectId: "dominionapp-45bfa",
-  databaseURL: "https://dominionapp-45bfa-default-rtdb.europe-west1.firebasedatabase.app",
-  messagingSenderId: "123456789012",
-  appId: "1:123456789012:web:abcdef"
+  "apiKey": "AIzaSyC3YyPJsXsX-u2EHKHcByPVj1Ru2Fn3YPo",
+  "authDomain": "dominionapp-45bfa.firebaseapp.com",
+  "databaseURL": "https://dominionapp-45bfa-default-rtdb.europe-west1.firebasedatabase.app",
+  "projectId": "dominionapp-45bfa",
+  "storageBucket": "dominionapp-45bfa.firebasestorage.app",
+  "messagingSenderId": "1047436704498",
+  "appId": "1:1047436704498:web:4b7f9b229b5ad7cc0fee6b"
 });
 
 const messaging = firebase.messaging();
