@@ -15,17 +15,27 @@ firebase.initializeApp({
 
 const messaging = firebase.messaging();
 
-// Hintergrund-Nachrichten empfangen und als System-Benachrichtigung anzeigen
+// Data-only FCM payloads from notifyTestChat are handled here.
 messaging.onBackgroundMessage((payload) => {
-  console.log('[firebase-messaging-sw.js] Hintergrundnachricht empfangen:', payload);
-  
-  const notificationTitle = payload.notification?.title || 'Dominion App';
+  const data = payload.data || {};
+  const notificationTitle = payload.notification?.title || data.title || 'Dominion-Test';
   const notificationOptions = {
-    body: payload.notification?.body || 'Neue Aktivität im System.',
+    body: payload.notification?.body || data.body || 'Neue Chatnachricht',
     icon: './favicon.ico',
     badge: './favicon.ico',
-    data: payload.data
+    data: { url: 'https://jnilats33.github.io/Dominion-Test/' },
+    tag: 'dominion-test-chat'
   };
+  return self.registration.showNotification(notificationTitle, notificationOptions);
+});
 
-  self.registration.showNotification(notificationTitle, notificationOptions);
+self.addEventListener('notificationclick', (event) => {
+  event.notification.close();
+  const url = 'https://jnilats33.github.io/Dominion-Test/';
+  event.waitUntil((async () => {
+    const clientsList = await clients.matchAll({ type: 'window', includeUncontrolled: true });
+    const existing = clientsList.find(client => client.url.startsWith(url));
+    if (existing) return existing.focus();
+    return clients.openWindow(url);
+  })());
 });
