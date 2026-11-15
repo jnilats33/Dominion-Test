@@ -1071,40 +1071,53 @@
     }
 
     async function requestPushPermissions() {
-      try {
-        const permission = await Notification.requestPermission();
-        if (permission === 'granted') {
-          showToast('Push-Berechtigung erteilt!');
-          if (!swRegistration && 'serviceWorker' in navigator) {
-            swRegistration = await navigator.serviceWorker.register('./firebase-messaging-sw.js').catch(() => null);
-          }
-          if (messagingInstance) {
-            const tokenOptions = { vapidKey: FCM_VAPID_KEY };
-            if (swRegistration) {
-              tokenOptions.serviceWorkerRegistration = swRegistration;
-            }
-            const token = await messagingInstance.getToken(tokenOptions).catch((err) => {
-              console.warn('getToken Fehler:', err);
-              return null;
-            });
-            if (token) {
-              appState.fcmToken = token;
-              persistState();
-            }
-          }
-          const daisyPill = document.getElementById('daisy-push-status-pill');
-          if (daisyPill) { daisyPill.textContent = 'Berechtigung erteilt'; daisyPill.className = 'inline-block text-[11px] px-2.5 py-1 rounded-full bg-emerald-500/15 text-emerald-300 border border-emerald-500/30'; }
-          const pill = document.getElementById('push-status-pill');
+      let step = 'Browser-Unterstützung';
+      const setPushStatus = (message, ok) => {
+        for (const id of ['push-status-pill', 'daisy-push-status-pill']) {
+          const pill = document.getElementById(id);
           if (pill) {
-            pill.textContent = 'Aktiviert';
-            pill.className = 'text-[11px] px-2.5 py-1 rounded-full bg-emerald-500/15 text-emerald-300 border border-emerald-500/30';
+            pill.textContent = message;
+            pill.className = 'inline-block text-[11px] px-2.5 py-1 rounded-full ' +
+              (ok ? 'bg-emerald-500/15 text-emerald-300 border border-emerald-500/30' :
+                'bg-amber-500/15 text-amber-300 border border-amber-500/30');
           }
-        } else {
-          showToast('Push-Berechtigung verweigert.', 'error');
         }
+      };
+      try {
+        if (!('Notification' in window)) throw new Error('Dieser Browser unterstützt keine Web-Benachrichtigungen.');
+        if (!('serviceWorker' in navigator)) throw new Error('Service Worker werden nicht unterstützt.');
+        if (!('PushManager' in window)) throw new Error('Web Push wird von diesem Browser nicht unterstützt.');
+        step = 'Benachrichtigungsberechtigung';
+        const permission = await Notification.requestPermission();
+        if (permission !== 'granted') {
+          setPushStatus('Berechtigung: ' + permission, false);
+          showToast('Push-Berechtigung: ' + permission, 'error');
+          return;
+        }
+        setPushStatus('Berechtigung erteilt – Registrierung läuft', false);
+        step = 'Service Worker';
+        swRegistration = await navigator.serviceWorker.register('./firebase-messaging-sw.js');
+        step = 'Firebase Messaging';
+        if (!firebase.messaging.isSupported()) throw new Error('Firebase Messaging wird auf diesem Gerät nicht unterstützt.');
+        if (!messagingInstance) messagingInstance = firebase.messaging();
+        step = 'FCM-Token';
+        const token = await messagingInstance.getToken({
+          vapidKey: FCM_VAPID_KEY,
+          serviceWorkerRegistration: swRegistration
+        });
+        if (!token) throw new Error('Firebase hat kein Push-Token zurückgegeben.');
+        // Keep the token device-local; a shared room-level token can be overwritten by the other device.
+        const prefs = getDevicePrefs();
+        prefs.fcmToken = token;
+        saveDevicePrefs(prefs);
+        setPushStatus('Firebase-Registrierung erfolgreich', true);
+        showToast('Push-Gerät erfolgreich bei Firebase registriert!', 'success');
       } catch (err) {
-        console.error('Push error:', err);
-        showToast('Push konnte nicht aktiviert werden.', 'error');
+        console.error('Push-Aktivierung fehlgeschlagen bei ' + step + ':', err);
+        const details = err && err.message ? err.message : String(err);
+        setPushStatus('Fehler bei ' + step, false);
+        showToast('Push-Fehler (' + step + '): ' + details, 'error');
+        alert('Push-Diagnose – ' + step + '\\n' + details);
       }
     }
 
