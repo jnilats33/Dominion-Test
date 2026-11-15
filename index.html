@@ -913,6 +913,7 @@
     let isRecordingAudio = false;
     let recordingStartedAt = 0;
     let firebaseDbRef = null;
+    let firebaseRoomPathPending = null;
     let isApplyingRemoteUpdate = false;
     let messagingInstance = null;
     let testAuthUser = null;
@@ -1042,7 +1043,7 @@
           }
         }
         initTestAppCheck();
-        attachFirebaseListener(safeRoomPath);
+        firebaseRoomPathPending = safeRoomPath;
         initTestAuth();
         initFCM(fbUrl);
       } catch (err) {
@@ -1111,6 +1112,7 @@
           }
         }
         updateTestAuthPanel();
+        updateAuthenticatedFirebaseSync();
         if (testAuthUser && testAuthRole === currentRole) registerTestPushToken().catch(e => console.warn("Push registration pending:", e.message));
       });
     }
@@ -1251,6 +1253,19 @@
         showToast('Push-Fehler (' + step + '): ' + details, 'error');
         alert('Push-Diagnose – ' + step + '\\n' + details);
       }
+    }
+
+    // Database listeners start only after Firebase has restored a verified session.
+    // This avoids permission errors when the database rules become restrictive.
+    function updateAuthenticatedFirebaseSync() {
+      const verified = !!testAuthUser && ['Master', 'Daisy'].includes(testAuthRole);
+      if (!verified) {
+        if (firebaseDbRef) firebaseDbRef.off();
+        firebaseDbRef = null;
+        updateSyncIndicator(false);
+        return;
+      }
+      if (firebaseRoomPathPending) attachFirebaseListener(firebaseRoomPathPending);
     }
 
     function attachFirebaseListener(safeRoomPath) {
