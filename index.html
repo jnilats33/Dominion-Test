@@ -669,6 +669,15 @@
           </div>
 
           <!-- SUB-TAB C: SICHERHEIT & PUSH (MASTER ONLY) -->
+          <div id="settings-panel-benachrichtigungen" class="hidden space-y-5">
+            <div class="p-4 rounded-2xl bg-white/[0.03] border border-slate-800 space-y-3.5">
+              <h3 class="font-semibold text-sm text-white">🔔 Benachrichtigungen auf diesem Gerät</h3>
+              <p class="text-xs text-slate-300">Erlaube Benachrichtigungen für dieses Smartphone. Die Zustellung bei geschlossener App wird separat getestet.</p>
+              <span id="daisy-push-status-pill" class="inline-block text-[11px] px-2.5 py-1 rounded-full bg-amber-500/15 text-amber-300 border border-amber-500/30">Nicht geprüft</span>
+              <div><button onclick="requestPushPermissions()" class="px-5 py-2.5 rounded-xl gold-gradient font-semibold text-xs shadow">🔔 Push-Benachrichtigungen aktivieren</button></div>
+            </div>
+          </div>
+
           <div id="settings-panel-sicherheit" class="hidden space-y-5">
             <!-- Firebase Live-Sync -->
             <div class="p-4 rounded-2xl bg-white/[0.03] border border-slate-800 space-y-3.5">
@@ -1083,6 +1092,8 @@
               persistState();
             }
           }
+          const daisyPill = document.getElementById('daisy-push-status-pill');
+          if (daisyPill) { daisyPill.textContent = 'Berechtigung erteilt'; daisyPill.className = 'inline-block text-[11px] px-2.5 py-1 rounded-full bg-emerald-500/15 text-emerald-300 border border-emerald-500/30'; }
           const pill = document.getElementById('push-status-pill');
           if (pill) {
             pill.textContent = 'Aktiviert';
@@ -2378,10 +2389,13 @@
           </button>
         `;
       } else {
-        activeSettingsSubTab = 'basics';
+        if (!['basics', 'benachrichtigungen'].includes(activeSettingsSubTab)) activeSettingsSubTab = 'basics';
         subTabsEl.innerHTML = `
-          <button onclick="selectSettingsSubTab('basics')" class="px-3.5 py-2 rounded-xl text-xs font-semibold whitespace-nowrap gold-gradient shadow">
+          <button onclick="selectSettingsSubTab('basics')" class="px-3.5 py-2 rounded-xl text-xs font-semibold whitespace-nowrap transition ${activeSettingsSubTab === 'basics' ? 'gold-gradient shadow' : 'bg-white/5 text-slate-300 hover:bg-white/10'}">
             🎛️ Basics
+          </button>
+          <button onclick="selectSettingsSubTab('benachrichtigungen')" class="px-3.5 py-2 rounded-xl text-xs font-semibold whitespace-nowrap transition ${activeSettingsSubTab === 'benachrichtigungen' ? 'gold-gradient shadow' : 'bg-white/5 text-slate-300 hover:bg-white/10'}">
+            🔔 Benachrichtigungen
           </button>
         `;
       }
@@ -2389,6 +2403,7 @@
       document.getElementById('settings-panel-basics').classList.toggle('hidden', activeSettingsSubTab !== 'basics');
       document.getElementById('settings-panel-berechtigungen').classList.toggle('hidden', !isMaster || activeSettingsSubTab !== 'berechtigungen');
       document.getElementById('settings-panel-sicherheit').classList.toggle('hidden', !isMaster || activeSettingsSubTab !== 'sicherheit');
+      document.getElementById('settings-panel-benachrichtigungen').classList.toggle('hidden', isMaster || activeSettingsSubTab !== 'benachrichtigungen');
 
       const masterNameInput = document.getElementById('basic-master-name');
       const daisyNameInput = document.getElementById('basic-daisy-name');
@@ -2436,7 +2451,7 @@
     }
 
     function selectSettingsSubTab(subTab) {
-      if (currentRole !== 'Master' && subTab !== 'basics') return;
+      if (currentRole !== 'Master' && !['basics', 'benachrichtigungen'].includes(subTab)) return;
       activeSettingsSubTab = subTab;
       renderEinstellungen();
     }
