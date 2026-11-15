@@ -801,6 +801,7 @@
   <!-- Firebase Compat SDKs (App, Database, Messaging) -->
   <script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-app-compat.js"></script>
   <script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-database-compat.js"></script>
+  <script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-auth-compat.js"></script>
   <script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-messaging-compat.js"></script>
 
   <script>
@@ -911,6 +912,8 @@
     let firebaseDbRef = null;
     let isApplyingRemoteUpdate = false;
     let messagingInstance = null;
+    let testAuthUser = null;
+    let testAuthRole = null;
     let swRegistration = null;
 
     function loadState() {
@@ -1035,6 +1038,7 @@
           }
         }
         attachFirebaseListener(safeRoomPath);
+        initTestAuth();
         initFCM(fbUrl);
       } catch (err) {
         console.warn('Firebase Init Fallback:', err);
@@ -1055,9 +1059,10 @@
                     vapidKey: FCM_VAPID_KEY,
                     serviceWorkerRegistration: registration
                   }).then((token) => {
-                    if (token && appState.fcmToken !== token) {
-                      appState.fcmToken = token;
-                      persistState();
+                    if (token) {
+                      const prefs = getDevicePrefs();
+                      prefs.fcmToken = token;
+                      saveDevicePrefs(prefs);
                     }
                   }).catch(e => console.warn('FCM silent token refresh warning:', e));
                 }
@@ -1067,6 +1072,90 @@
         }
       } catch (e) {
         console.warn('FCM setup warning:', e);
+      }
+    }
+
+    // Firebase Auth is separate from the existing Dominion role/PIN UI.
+    // A verified custom claim, not the selected UI role, establishes identity.
+    function initTestAuth() {
+      firebase.auth().onAuthStateChanged(async (user) => {
+        testAuthUser = null;
+        testAuthRole = null;
+        if (user) {
+          try {
+            const result = await user.getIdTokenResult();
+            const role = result.claims.dominionTestRole;
+            if (role === 'Master' || role === 'Daisy') {
+              testAuthUser = user;
+              testAuthRole = role;
+            }
+          } catch (error) {
+            console.warn('Firebase Auth claims could not be checked:', error);
+          }
+        }
+        updateTestAuthPanel();
+      });
+    }
+
+    function updateTestAuthPanel() {
+      const el = document.getElementById('test-firebase-auth-panel');
+      if (!el) return;
+      const matched = !!testAuthUser && testAuthRole === currentRole;
+      const otherRole = !!testAuthUser && !matched;
+      el.innerHTML = `
+        <div class="rounded-xl border border-slate-700 bg-slate-900/60 p-4 space-y-3">
+          <div class="font-semibold text-sm text-slate-100">🔐 Firebase-Anmeldung (Test)</div>
+          <p class="text-xs text-slate-400">Zusätzliche sichere Anmeldung für die spätere Push-Zustellung. Deine normale Dominion-Anmeldung bleibt unverändert.</p>
+          <p class="text-xs ${matched ? 'text-emerald-300' : 'text-amber-300'}">${matched ? '✓ Firebase-Konto für ' + currentRole + ' bestätigt' : otherRole ? 'Anderes Firebase-Konto angemeldet (' + testAuthRole + '). Bitte abmelden und das Konto für ' + currentRole + ' verwenden.' : 'Für ' + currentRole + ' noch nicht bei Firebase angemeldet.'}</p>
+          ${matched || otherRole ? '<button type="button" onclick="signOutTestFirebase()" class="px-3 py-2 text-xs rounded-lg bg-white/10 text-slate-100">Firebase-Konto abmelden</button>' : `
+            <form onsubmit="signInTestFirebase(event)" class="space-y-2">
+              <input id="test-auth-email" type="email" autocomplete="username" required placeholder="Firebase-E-Mail-Adresse" class="w-full rounded-lg bg-slate-800 border border-slate-600 text-white px-3 py-2 text-sm" />
+              <input id="test-auth-password" type="password" autocomplete="current-password" required placeholder="Firebase-Passwort" class="w-full rounded-lg bg-slate-800 border border-slate-600 text-white px-3 py-2 text-sm" />
+              <button type="submit" class="px-3 py-2 text-xs rounded-lg bg-amber-600 text-white">Bei Firebase anmelden</button>
+            </form>`}
+          <p class="text-[11px] text-slate-500">Push-Tokens werden noch nicht an den Server übertragen. Der automatische Versand ist noch nicht aktiviert.</p>
+        </div>`;
+    }
+
+    async function signInTestFirebase(event) {
+      event.preventDefault();
+      const email = document.getElementById('test-auth-email')?.value.trim();
+      const password = document.getElementById('test-auth-password')?.value;
+      if (!email || !password || !currentRole) return;
+      const intendedRole = currentRole;
+      try {
+        const credential = await firebase.auth().signInWithEmailAndPassword(email, password);
+        const claims = (await credential.user.getIdTokenResult(true)).claims;
+        if (claims.dominionTestRole !== intendedRole) {
+          await firebase.auth().signOut();
+          testAuthUser = null;
+          testAuthRole = null;
+          updateTestAuthPanel();
+          showToast('Dieses Firebase-Konto gehört nicht zur Rolle ' + intendedRole + '.', 'error');
+          return;
+        }
+        testAuthUser = credential.user;
+        testAuthRole = intendedRole;
+        updateTestAuthPanel();
+        showToast('Firebase-Anmeldung für ' + intendedRole + ' erfolgreich!', 'success');
+      } catch (error) {
+        console.warn('Firebase sign-in failed:', error.code || error.message);
+        showToast('Firebase-Anmeldung fehlgeschlagen. E-Mail und Passwort prüfen.', 'error');
+      } finally {
+        const passwordInput = document.getElementById('test-auth-password');
+        if (passwordInput) passwordInput.value = '';
+      }
+    }
+
+    async function signOutTestFirebase() {
+      try {
+        await firebase.auth().signOut();
+        testAuthUser = null;
+        testAuthRole = null;
+        updateTestAuthPanel();
+        showToast('Firebase-Konto abgemeldet.');
+      } catch (error) {
+        showToast('Firebase-Abmeldung fehlgeschlagen.', 'error');
       }
     }
 
@@ -1362,6 +1451,7 @@
 
       refreshAllUI();
       switchTab(startTab);
+      updateTestAuthPanel();
     }
 
     function logoutRole() {
@@ -1371,6 +1461,7 @@
       document.getElementById('role-screen').classList.remove('hidden');
       cancelPinPrompt();
       updateLoginLabels();
+      updateTestAuthPanel();
     }
 
     function getDevicePrefs() {
@@ -2417,6 +2508,14 @@
       document.getElementById('settings-panel-berechtigungen').classList.toggle('hidden', !isMaster || activeSettingsSubTab !== 'berechtigungen');
       document.getElementById('settings-panel-sicherheit').classList.toggle('hidden', !isMaster || activeSettingsSubTab !== 'sicherheit');
       document.getElementById('settings-panel-benachrichtigungen').classList.toggle('hidden', isMaster || activeSettingsSubTab !== 'benachrichtigungen');
+      const authParent = document.getElementById(isMaster ? 'settings-panel-sicherheit' : 'settings-panel-benachrichtigungen');
+      let authPanel = document.getElementById('test-firebase-auth-panel');
+      if (authParent && !authPanel) {
+        authPanel = document.createElement('div');
+        authPanel.id = 'test-firebase-auth-panel';
+      }
+      if (authParent && authPanel && authPanel.parentElement !== authParent) authParent.appendChild(authPanel);
+      updateTestAuthPanel();
 
       const masterNameInput = document.getElementById('basic-master-name');
       const daisyNameInput = document.getElementById('basic-daisy-name');
