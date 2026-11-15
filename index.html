@@ -802,6 +802,7 @@
   <script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-app-compat.js"></script>
   <script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-database-compat.js"></script>
   <script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-auth-compat.js"></script>
+  <script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-functions-compat.js"></script>
   <script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-messaging-compat.js"></script>
 
   <script>
@@ -978,6 +979,7 @@
       if (firebaseDbRef && !isApplyingRemoteUpdate) {
         const stateWithoutChat = { ...appState };
         delete stateWithoutChat.chat;
+        delete stateWithoutChat.fcmToken; // Never publish a push token in shared room state.
         firebaseDbRef.update(sanitizeForFirebase(stateWithoutChat)).catch(err => {
           console.warn('Firebase Sync Fehler:', err);
           updateSyncIndicator(false);
@@ -1094,6 +1096,7 @@
           }
         }
         updateTestAuthPanel();
+        if (testAuthUser && testAuthRole === currentRole) registerTestPushToken().catch(e => console.warn("Push registration pending:", e.message));
       });
     }
 
@@ -1113,7 +1116,7 @@
               <input id="test-auth-password" type="password" autocomplete="current-password" required placeholder="Firebase-Passwort" class="w-full rounded-lg bg-slate-800 border border-slate-600 text-white px-3 py-2 text-sm" />
               <button type="submit" class="px-3 py-2 text-xs rounded-lg bg-amber-600 text-white">Bei Firebase anmelden</button>
             </form>`}
-          <p class="text-[11px] text-slate-500">Push-Tokens werden noch nicht an den Server übertragen. Der automatische Versand ist noch nicht aktiviert.</p>
+          <p id="test-push-registration-state" class="text-[11px] text-slate-500">Push-Registrierung: ${matched ? 'wird geprüft' : 'Firebase-Anmeldung erforderlich'}. Der automatische Versand wird erst nach Backend-Bereitstellung aktiviert.</p>
         </div>`;
     }
 
@@ -1138,6 +1141,7 @@
         testAuthRole = intendedRole;
         updateTestAuthPanel();
         showToast('Firebase-Anmeldung für ' + intendedRole + ' erfolgreich!', 'success');
+        registerTestPushToken().catch(e => console.warn('Push registration pending:', e.message));
       } catch (error) {
         console.warn('Firebase sign-in failed:', error.code || error.message);
         showToast('Firebase-Anmeldung fehlgeschlagen. E-Mail und Passwort prüfen.', 'error');
@@ -1156,6 +1160,27 @@
         showToast('Firebase-Konto abgemeldet.');
       } catch (error) {
         showToast('Firebase-Abmeldung fehlgeschlagen.', 'error');
+      }
+    }
+
+    async function registerTestPushToken() {
+      if (!testAuthUser || testAuthRole !== currentRole || !currentRole) return;
+      const prefs = getDevicePrefs();
+      if (!prefs.fcmToken || Notification.permission !== 'granted') return;
+      if (!prefs.pushDeviceId) {
+        prefs.pushDeviceId = Array.from(crypto.getRandomValues(new Uint8Array(24)), b => b.toString(16).padStart(2, '0')).join('');
+        saveDevicePrefs(prefs);
+      }
+      const status = document.getElementById('test-push-registration-state');
+      try {
+        const fn = firebase.app().functions('europe-west1').httpsCallable('registerTestPushDevice');
+        await fn({ token: prefs.fcmToken, deviceId: prefs.pushDeviceId });
+        if (status) status.textContent = '✓ Push-Gerät serverseitig registriert.';
+        showToast('Push-Gerät sicher registriert!', 'success');
+      } catch (error) {
+        if (status) status.textContent = 'Push-Server noch nicht erreichbar oder Registrierung fehlgeschlagen.';
+        console.warn('Secure push registration:', error.code || error.message);
+        throw error;
       }
     }
 
@@ -1199,6 +1224,9 @@
         const prefs = getDevicePrefs();
         prefs.fcmToken = token;
         saveDevicePrefs(prefs);
+        if (testAuthUser && testAuthRole === currentRole) {
+          await registerTestPushToken().catch(e => console.warn('Push backend not deployed yet:', e.message));
+        }
         setPushStatus('Firebase-Registrierung erfolgreich', true);
         showToast('Push-Gerät erfolgreich bei Firebase registriert!', 'success');
       } catch (err) {
@@ -1233,6 +1261,7 @@
         try {
           const localChatBackup = Array.isArray(appState.chat) ? [...appState.chat] : [];
           appState = mergeWithDefaults(remoteData);
+          delete appState.fcmToken;
           const remoteChat = Array.isArray(appState.chat) ? appState.chat : [];
           mergedChat = mergeChatMessages(localChatBackup, remoteChat);
           chatNeedsSync = JSON.stringify(mergedChat) !== JSON.stringify(remoteChat);
