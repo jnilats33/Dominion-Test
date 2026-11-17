@@ -234,7 +234,7 @@
       <!-- ==================== 1. DASHBOARD ==================== -->
       <section id="tab-dashboard" class="space-y-5 animate-fade">
         <!-- Welcome Banner -->
-        <div class="glass-card rounded-2xl p-5 border border-[#c9973e]/25 flex flex-col sm:flex-row sm:items-center justify-between gap-4">
+        <div id="dashboard-section-welcome" class="glass-card rounded-2xl p-5 border border-[#c9973e]/25 flex flex-col sm:flex-row sm:items-center justify-between gap-4">
           <div>
             <p class="text-xs uppercase tracking-widest text-[#c9973e] font-semibold">Willkommen zurück</p>
             <h2 id="dash-greeting" class="text-xl sm:text-2xl font-bold text-white mt-0.5">Hallo, Master</h2>
@@ -251,7 +251,7 @@
         </div>
 
         <!-- UPDATE / CHANGELOG BOX (v2.3) -->
-        <div class="glass-card rounded-2xl p-5 border border-[#c9973e]/30 space-y-2">
+        <div id="dashboard-section-news" class="glass-card rounded-2xl p-5 border border-[#c9973e]/30 space-y-2">
           <div class="flex items-center justify-between">
             <h3 class="font-display text-sm font-bold text-[#e5b55c] flex items-center gap-2">
               <span>🚀</span> Update-News: Dominion v2.3
@@ -264,7 +264,7 @@
         </div>
 
         <!-- Quick Overview Metrics -->
-        <section class="glass-card rounded-2xl p-5" aria-label="Dashboard-Übersicht">
+        <section id="dashboard-section-metrics" class="glass-card rounded-2xl p-5" aria-label="Dashboard-Übersicht">
           <div class="flex items-center justify-between gap-2 mb-3">
             <button type="button" id="dashboard-metrics-toggle" onclick="toggleDashboardMetrics()" aria-expanded="true" aria-controls="dashboard-metrics-grid" class="flex items-center gap-2 text-sm font-semibold text-[#e5b55c] hover:text-white transition">
               <span id="dashboard-metrics-arrow" aria-hidden="true">▾</span>
@@ -339,7 +339,7 @@
         </section>
 
         <!-- LIVE ACTIVITY STREAM / FEED -->
-        <div class="glass-card rounded-2xl p-5 border border-[#c9973e]/25">
+        <div id="dashboard-section-feed" class="glass-card rounded-2xl p-5 border border-[#c9973e]/25">
           <div class="flex items-center justify-between mb-4 gap-2">
             <button type="button" id="dashboard-feed-toggle" onclick="toggleDashboardSection('feed')" aria-expanded="true" aria-controls="dashboard-feed-content" class="flex items-center gap-2.5 text-left hover:opacity-80 transition">
               <span id="dashboard-feed-arrow" class="text-slate-300" aria-hidden="true">▾</span>
@@ -362,7 +362,7 @@
         </div>
 
         <!-- Upcoming Events Preview -->
-        <div class="glass-card rounded-2xl p-5">
+        <div id="dashboard-section-events" class="glass-card rounded-2xl p-5">
           <div class="flex items-center justify-between mb-3 gap-2">
             <button type="button" id="dashboard-events-toggle" onclick="toggleDashboardSection('events')" aria-expanded="true" aria-controls="dashboard-events-content" class="flex items-center gap-2 text-left font-semibold text-sm text-slate-200 hover:text-[#e5b55c] transition">
               <span id="dashboard-events-arrow" aria-hidden="true">▾</span>
@@ -594,6 +594,18 @@
           <!-- Sub-Tabs inside Einstellungen -->
           <div id="settings-subtabs" class="flex gap-2 overflow-x-auto no-scrollbar pb-2 mb-5 border-b border-slate-800">
             <!-- Master: Basics, Berechtigungen, Sicherheit | Daisy: Basics only -->
+          </div>
+
+          <!-- Personal dashboard visibility preferences -->
+          <div id="settings-panel-ansicht" class="hidden space-y-5">
+            <div class="p-4 rounded-2xl bg-white/[0.03] border border-slate-800 space-y-4">
+              <div>
+                <h3 class="font-semibold text-sm text-white">🖥️ Dashboard</h3>
+                <p class="text-xs text-slate-400 mt-1">Wähle, welche Bereiche auf deinem Dashboard angezeigt werden. Einklappen und Festpinnen bleiben unabhängig davon.</p>
+              </div>
+              <div id="dashboard-visibility-options" class="space-y-3"></div>
+              <p class="text-[11px] text-slate-500">Diese Ansicht wird für deine Rolle auf diesem Gerät gespeichert.</p>
+            </div>
           </div>
 
           <!-- SUB-TAB A: BASICS (Visible to BOTH Master & Daisy) -->
@@ -1800,7 +1812,58 @@
       saveDashboardSectionPreferences();
     }
 
+    const DASHBOARD_VISIBILITY_KEY = 'dominion-test-dashboard-visibility-v1';
+    const DASHBOARD_VISIBLE_SECTIONS = [
+      { id: 'welcome', label: 'Willkommen' },
+      { id: 'news', label: 'Update-News' },
+      { id: 'metrics', label: 'Übersicht' },
+      { id: 'feed', label: 'Aktivitäts-Stream' },
+      { id: 'events', label: 'Nächste Termine' }
+    ];
+    function getDashboardVisibility() {
+      try {
+        const all = JSON.parse(localStorage.getItem(DASHBOARD_VISIBILITY_KEY) || '{}');
+        const rolePrefs = all[currentRole] || {};
+        return rolePrefs && typeof rolePrefs === 'object' ? rolePrefs : {};
+      } catch (err) {
+        console.warn('Dashboard-Sichtbarkeit konnte nicht geladen werden:', err);
+        return {};
+      }
+    }
+    function setDashboardSectionVisible(section, visible) {
+      if (!DASHBOARD_VISIBLE_SECTIONS.some(entry => entry.id === section)) return;
+      try {
+        const all = JSON.parse(localStorage.getItem(DASHBOARD_VISIBILITY_KEY) || '{}');
+        if (!all[currentRole] || typeof all[currentRole] !== 'object') all[currentRole] = {};
+        all[currentRole][section] = visible;
+        localStorage.setItem(DASHBOARD_VISIBILITY_KEY, JSON.stringify(all));
+      } catch (err) {
+        console.warn('Dashboard-Sichtbarkeit konnte nicht gespeichert werden:', err);
+      }
+      updateDashboardVisibilityUI();
+      renderDashboardVisibilitySettings();
+    }
+    function updateDashboardVisibilityUI() {
+      const prefs = getDashboardVisibility();
+      for (const entry of DASHBOARD_VISIBLE_SECTIONS) {
+        const el = document.getElementById('dashboard-section-' + entry.id);
+        if (el) el.classList.toggle('hidden', prefs[entry.id] === false);
+      }
+    }
+    function renderDashboardVisibilitySettings() {
+      const box = document.getElementById('dashboard-visibility-options');
+      if (!box) return;
+      const prefs = getDashboardVisibility();
+      box.innerHTML = DASHBOARD_VISIBLE_SECTIONS.map(entry => `
+        <label class="flex items-center justify-between gap-3 rounded-xl bg-white/[0.03] border border-slate-800 px-3.5 py-3 cursor-pointer">
+          <span class="text-sm text-slate-200">${entry.label}</span>
+          <input type="checkbox" class="w-4 h-4 accent-amber-500" onchange="setDashboardSectionVisible('${entry.id}', this.checked)" ${prefs[entry.id] !== false ? 'checked' : ''} />
+        </label>
+      `).join('');
+    }
+
     function renderDashboard() {
+      updateDashboardVisibilityUI();
       updateDashboardMetricsUI();
       updateDashboardSectionsUI();
       document.getElementById('dash-greeting').textContent = `Hallo, ${getDisplayName(currentRole)}`;
@@ -2748,15 +2811,21 @@
           <button onclick="selectSettingsSubTab('berechtigungen')" class="px-3.5 py-2 rounded-xl text-xs font-semibold whitespace-nowrap transition ${activeSettingsSubTab === 'berechtigungen' ? 'gold-gradient shadow' : 'bg-white/5 text-slate-300 hover:bg-white/10'}">
             🔐 Berechtigungen
           </button>
+          <button onclick="selectSettingsSubTab('ansicht')" class="px-3.5 py-2 rounded-xl text-xs font-semibold whitespace-nowrap transition ${activeSettingsSubTab === 'ansicht' ? 'gold-gradient shadow' : 'bg-white/5 text-slate-300 hover:bg-white/10'}">
+            👁️ Ansicht
+          </button>
           <button onclick="selectSettingsSubTab('sicherheit')" class="px-3.5 py-2 rounded-xl text-xs font-semibold whitespace-nowrap transition ${activeSettingsSubTab === 'sicherheit' ? 'gold-gradient shadow' : 'bg-white/5 text-slate-300 hover:bg-white/10'}">
             🛡️ Sicherheit & Push
           </button>
         `;
       } else {
-        if (!['basics', 'benachrichtigungen'].includes(activeSettingsSubTab)) activeSettingsSubTab = 'basics';
+        if (!['basics', 'ansicht', 'benachrichtigungen'].includes(activeSettingsSubTab)) activeSettingsSubTab = 'basics';
         subTabsEl.innerHTML = `
           <button onclick="selectSettingsSubTab('basics')" class="px-3.5 py-2 rounded-xl text-xs font-semibold whitespace-nowrap transition ${activeSettingsSubTab === 'basics' ? 'gold-gradient shadow' : 'bg-white/5 text-slate-300 hover:bg-white/10'}">
             🎛️ Basics
+          </button>
+          <button onclick="selectSettingsSubTab('ansicht')" class="px-3.5 py-2 rounded-xl text-xs font-semibold whitespace-nowrap transition ${activeSettingsSubTab === 'ansicht' ? 'gold-gradient shadow' : 'bg-white/5 text-slate-300 hover:bg-white/10'}">
+            👁️ Ansicht
           </button>
           <button onclick="selectSettingsSubTab('benachrichtigungen')" class="px-3.5 py-2 rounded-xl text-xs font-semibold whitespace-nowrap transition ${activeSettingsSubTab === 'benachrichtigungen' ? 'gold-gradient shadow' : 'bg-white/5 text-slate-300 hover:bg-white/10'}">
             🔔 Benachrichtigungen
@@ -2764,6 +2833,8 @@
         `;
       }
 
+      document.getElementById('settings-panel-ansicht').classList.toggle('hidden', activeSettingsSubTab !== 'ansicht');
+      renderDashboardVisibilitySettings();
       document.getElementById('settings-panel-basics').classList.toggle('hidden', activeSettingsSubTab !== 'basics');
       document.getElementById('settings-panel-berechtigungen').classList.toggle('hidden', !isMaster || activeSettingsSubTab !== 'berechtigungen');
       document.getElementById('settings-panel-sicherheit').classList.toggle('hidden', !isMaster || activeSettingsSubTab !== 'sicherheit');
@@ -2823,7 +2894,7 @@
     }
 
     function selectSettingsSubTab(subTab) {
-      if (currentRole !== 'Master' && !['basics', 'benachrichtigungen'].includes(subTab)) return;
+      if (currentRole !== 'Master' && !['basics', 'ansicht', 'benachrichtigungen'].includes(subTab)) return;
       activeSettingsSubTab = subTab;
       renderEinstellungen();
     }
