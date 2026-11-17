@@ -292,7 +292,7 @@
             <button type="button" id="dashboard-metrics-pin" onclick="toggleDashboardMetricsPin()" aria-pressed="false" title="Übersicht geöffnet halten" aria-label="Übersicht geöffnet halten" class="px-2.5 py-1.5 rounded-lg text-slate-400 hover:text-[#e5b55c] hover:bg-white/5 transition">📌</button>
           </div>
           <div id="dashboard-metrics-grid" class="grid grid-cols-2 sm:grid-cols-4 gap-3">
-          <div onclick="switchTab('kalender')" class="glass-card rounded-2xl p-4 cursor-pointer hover:border-[#c9973e]/50 transition">
+          <div onclick="switchTab('kalender')" data-dashboard-permission="kalender" class="glass-card rounded-2xl p-4 cursor-pointer hover:border-[#c9973e]/50 transition">
             <div class="flex items-center justify-between text-slate-400 text-xs mb-1">
               <span>Termine</span>
               <span>📅</span>
@@ -301,7 +301,7 @@
             <div class="text-[11px] text-[#c9973e] mt-1">Anstehend</div>
           </div>
 
-          <div onclick="switchTab('einkauf')" class="glass-card rounded-2xl p-4 cursor-pointer hover:border-[#c9973e]/50 transition">
+          <div onclick="switchTab('einkauf')" data-dashboard-permission="einkauf" class="glass-card rounded-2xl p-4 cursor-pointer hover:border-[#c9973e]/50 transition">
             <div class="flex items-center justify-between text-slate-400 text-xs mb-1">
               <span>Einkauf</span>
               <span>🛒</span>
@@ -310,7 +310,7 @@
             <div class="text-[11px] text-emerald-400 mt-1">Offene Artikel</div>
           </div>
 
-          <div onclick="switchTab('strafbuch')" class="glass-card rounded-2xl p-4 cursor-pointer hover:border-rose-500/50 transition">
+          <div onclick="switchTab('strafbuch')" data-dashboard-permission="strafbuch" class="glass-card rounded-2xl p-4 cursor-pointer hover:border-rose-500/50 transition">
             <div class="flex items-center justify-between text-slate-400 text-xs mb-1">
               <span>Strafbuch</span>
               <span>⚖️</span>
@@ -319,7 +319,7 @@
             <div class="text-[11px] text-rose-400 mt-1">Offene Einträge</div>
           </div>
 
-          <div onclick="jumpToTarget('verwaltung', 'aufgaben')" class="glass-card rounded-2xl p-4 cursor-pointer hover:border-[#c9973e]/50 transition">
+          <div onclick="jumpToTarget('verwaltung', 'aufgaben')" data-dashboard-permission="aufgaben" class="glass-card rounded-2xl p-4 cursor-pointer hover:border-[#c9973e]/50 transition">
             <div class="flex items-center justify-between text-slate-400 text-xs mb-1">
               <span>Aufgaben</span>
               <span>✅</span>
@@ -328,7 +328,7 @@
             <div class="text-[11px] text-amber-300 mt-1">Aktiv</div>
           </div>
 
-          <div onclick="jumpToTarget('verwaltung', 'toys')" class="glass-card rounded-2xl p-4 cursor-pointer hover:border-[#c9973e]/50 transition">
+          <div onclick="jumpToTarget('verwaltung', 'toys')" data-dashboard-permission="toys" class="glass-card rounded-2xl p-4 cursor-pointer hover:border-[#c9973e]/50 transition">
             <div class="flex items-center justify-between text-slate-400 text-xs mb-1">
               <span>Toys</span>
               <span>🔮</span>
@@ -337,7 +337,7 @@
             <div class="text-[11px] text-[#c9973e] mt-1">Gesamtbestand</div>
           </div>
 
-          <div onclick="jumpToTarget('verwaltung', 'kleidung')" class="glass-card rounded-2xl p-4 cursor-pointer hover:border-[#c9973e]/50 transition">
+          <div onclick="jumpToTarget('verwaltung', 'kleidung')" data-dashboard-permission="kleidung" class="glass-card rounded-2xl p-4 cursor-pointer hover:border-[#c9973e]/50 transition">
             <div class="flex items-center justify-between text-slate-400 text-xs mb-1">
               <span>Kleidung</span>
               <span>👗</span>
@@ -346,7 +346,7 @@
             <div class="text-[11px] text-[#c9973e] mt-1">Gesamtbestand</div>
           </div>
 
-          <div onclick="jumpToTarget('verwaltung', 'regeln')" class="glass-card rounded-2xl p-4 cursor-pointer hover:border-[#c9973e]/50 transition">
+          <div onclick="jumpToTarget('verwaltung', 'regeln')" data-dashboard-permission="regeln" class="glass-card rounded-2xl p-4 cursor-pointer hover:border-[#c9973e]/50 transition">
             <div class="flex items-center justify-between text-slate-400 text-xs mb-1">
               <span>Regeln</span>
               <span>📜</span>
@@ -1881,7 +1881,16 @@
       `).join('');
     }
 
+    function updateDashboardMetricPermissions() {
+      document.querySelectorAll('#dashboard-metrics-grid [data-dashboard-permission]').forEach(tile => {
+        const category = tile.getAttribute('data-dashboard-permission');
+        const permitted = currentRole === 'Master' || hasPermission(category, 'visible');
+        tile.classList.toggle('hidden', !permitted);
+      });
+    }
+
     function renderDashboard() {
+      updateDashboardMetricPermissions();
       updateDashboardVisibilityUI();
       updateDashboardMetricsUI();
       updateDashboardSectionsUI();
