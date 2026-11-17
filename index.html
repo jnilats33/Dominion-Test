@@ -300,6 +300,33 @@
             <div id="stat-aufgaben" class="text-2xl font-bold text-white">0</div>
             <div class="text-[11px] text-amber-300 mt-1">Aktiv</div>
           </div>
+
+          <div onclick="jumpToTarget('verwaltung', 'toys')" class="glass-card rounded-2xl p-4 cursor-pointer hover:border-[#c9973e]/50 transition">
+            <div class="flex items-center justify-between text-slate-400 text-xs mb-1">
+              <span>Toys</span>
+              <span>🔮</span>
+            </div>
+            <div id="stat-toys" class="text-2xl font-bold text-white">0</div>
+            <div class="text-[11px] text-[#c9973e] mt-1">Gesamtbestand</div>
+          </div>
+
+          <div onclick="jumpToTarget('verwaltung', 'kleidung')" class="glass-card rounded-2xl p-4 cursor-pointer hover:border-[#c9973e]/50 transition">
+            <div class="flex items-center justify-between text-slate-400 text-xs mb-1">
+              <span>Kleidung</span>
+              <span>👗</span>
+            </div>
+            <div id="stat-kleidung" class="text-2xl font-bold text-white">0</div>
+            <div class="text-[11px] text-[#c9973e] mt-1">Gesamtbestand</div>
+          </div>
+
+          <div onclick="jumpToTarget('verwaltung', 'regeln')" class="glass-card rounded-2xl p-4 cursor-pointer hover:border-[#c9973e]/50 transition">
+            <div class="flex items-center justify-between text-slate-400 text-xs mb-1">
+              <span>Regeln</span>
+              <span>📜</span>
+            </div>
+            <div id="stat-regeln" class="text-2xl font-bold text-white">0</div>
+            <div class="text-[11px] text-[#c9973e] mt-1">Gesamtbestand</div>
+          </div>
         </div>
 
         <!-- LIVE ACTIVITY STREAM / FEED -->
@@ -1650,6 +1677,9 @@
       document.getElementById('stat-einkauf').textContent = appState.einkauf.filter(i => !i.done).length;
       document.getElementById('stat-strafbuch').textContent = appState.strafbuch.filter(i => !i.resolved).length;
       document.getElementById('stat-aufgaben').textContent = (appState.mgmt.aufgaben || []).filter(i => !i.done).length;
+      document.getElementById('stat-toys').textContent = (appState.mgmt.toys || []).length;
+      document.getElementById('stat-kleidung').textContent = (appState.mgmt.kleidung || []).length;
+      document.getElementById('stat-regeln').textContent = (appState.mgmt.regeln || []).length;
 
       const limit = parseInt(appState.basics.feedLimit || 20, 10);
       const rawFeed = appState.activityFeed || [];
