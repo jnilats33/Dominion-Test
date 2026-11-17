@@ -340,31 +340,42 @@
 
         <!-- LIVE ACTIVITY STREAM / FEED -->
         <div class="glass-card rounded-2xl p-5 border border-[#c9973e]/25">
-          <div class="flex items-center justify-between mb-4">
-            <div class="flex items-center gap-2.5">
+          <div class="flex items-center justify-between mb-4 gap-2">
+            <button type="button" id="dashboard-feed-toggle" onclick="toggleDashboardSection('feed')" aria-expanded="true" aria-controls="dashboard-feed-content" class="flex items-center gap-2.5 text-left hover:opacity-80 transition">
+              <span id="dashboard-feed-arrow" class="text-slate-300" aria-hidden="true">▾</span>
               <span class="w-2.5 h-2.5 rounded-full bg-[#c9973e] animate-ping"></span>
-              <div>
-                <h3 class="font-display text-base font-bold text-[#e5b55c]">Aktivitäts-Stream</h3>
-                <p class="text-xs text-slate-400">Live-Verlauf aller Änderungen & Aktionen</p>
-              </div>
+              <span>
+                <span class="block font-display text-base font-bold text-[#e5b55c]">Aktivitäts-Stream</span>
+                <span class="block text-xs text-slate-400">Live-Verlauf aller Änderungen & Aktionen</span>
+              </span>
+            </button>
+            <div class="flex items-center gap-2 shrink-0">
+              <span id="feed-count-badge" class="text-[11px] px-2.5 py-1 rounded-full bg-white/5 border border-slate-800 text-slate-300">0 Einträge</span>
+              <button type="button" id="dashboard-feed-pin" onclick="toggleDashboardSectionPin('feed')" aria-pressed="false" aria-label="Aktivitäts-Stream geöffnet halten" title="Aktivitäts-Stream geöffnet halten" class="px-2 py-1.5 rounded-lg text-slate-400 hover:text-[#e5b55c] hover:bg-white/5 transition">📌</button>
             </div>
-            <span id="feed-count-badge" class="text-[11px] px-2.5 py-1 rounded-full bg-white/5 border border-slate-800 text-slate-300">0 Einträge</span>
           </div>
-
-          <div id="activity-feed-list" class="space-y-2.5 max-h-[380px] overflow-y-auto custom-scroll pr-1">
-            <!-- Rendered dynamically -->
+          <div id="dashboard-feed-content">
+            <div id="activity-feed-list" class="space-y-2.5 max-h-[380px] overflow-y-auto custom-scroll pr-1">
+              <!-- Rendered dynamically -->
+            </div>
           </div>
         </div>
 
         <!-- Upcoming Events Preview -->
         <div class="glass-card rounded-2xl p-5">
-          <div class="flex items-center justify-between mb-3">
-            <h3 class="font-semibold text-sm text-slate-200 flex items-center gap-2">
+          <div class="flex items-center justify-between mb-3 gap-2">
+            <button type="button" id="dashboard-events-toggle" onclick="toggleDashboardSection('events')" aria-expanded="true" aria-controls="dashboard-events-content" class="flex items-center gap-2 text-left font-semibold text-sm text-slate-200 hover:text-[#e5b55c] transition">
+              <span id="dashboard-events-arrow" aria-hidden="true">▾</span>
               <span>📅</span> Nächste Termine
-            </h3>
-            <button onclick="switchTab('kalender')" class="text-xs text-[#c9973e] hover:underline">Alle ansehen →</button>
+            </button>
+            <div class="flex items-center gap-2">
+              <button onclick="switchTab('kalender')" class="text-xs text-[#c9973e] hover:underline">Alle ansehen →</button>
+              <button type="button" id="dashboard-events-pin" onclick="toggleDashboardSectionPin('events')" aria-pressed="false" aria-label="Nächste Termine geöffnet halten" title="Nächste Termine geöffnet halten" class="px-2 py-1.5 rounded-lg text-slate-400 hover:text-[#e5b55c] hover:bg-white/5 transition">📌</button>
+            </div>
           </div>
-          <div id="dash-upcoming-events" class="space-y-2"></div>
+          <div id="dashboard-events-content">
+            <div id="dash-upcoming-events" class="space-y-2"></div>
+          </div>
         </div>
       </section>
 
@@ -1730,8 +1741,68 @@
       saveDashboardMetricsPreference();
     }
 
+    const DASHBOARD_SECTION_PREF_KEY = 'dominion-test-dashboard-sections-v1';
+    const dashboardSectionPreferences = { feed: { expanded: true, pinned: false }, events: { expanded: true, pinned: false } };
+    try {
+      const savedSections = JSON.parse(localStorage.getItem(DASHBOARD_SECTION_PREF_KEY) || '{}');
+      for (const section of ['feed', 'events']) {
+        const saved = savedSections[section] || {};
+        dashboardSectionPreferences[section].pinned = saved.pinned === true;
+        dashboardSectionPreferences[section].expanded = saved.pinned === true || saved.expanded !== false;
+      }
+    } catch (err) {
+      console.warn('Dashboard-Bereiche konnten nicht geladen werden:', err);
+    }
+
+    function updateDashboardSectionsUI() {
+      for (const section of ['feed', 'events']) {
+        const pref = dashboardSectionPreferences[section];
+        const content = document.getElementById('dashboard-' + section + '-content');
+        const toggle = document.getElementById('dashboard-' + section + '-toggle');
+        const arrow = document.getElementById('dashboard-' + section + '-arrow');
+        const pin = document.getElementById('dashboard-' + section + '-pin');
+        if (!content || !toggle || !arrow || !pin) continue;
+        content.classList.toggle('hidden', !pref.expanded);
+        toggle.setAttribute('aria-expanded', String(pref.expanded));
+        toggle.title = pref.pinned ? 'Zum Einklappen zuerst Reißzwecke lösen' : (pref.expanded ? 'Bereich einklappen' : 'Bereich ausklappen');
+        arrow.textContent = pref.expanded ? '▾' : '▸';
+        pin.setAttribute('aria-pressed', String(pref.pinned));
+        pin.setAttribute('aria-label', pref.pinned ? 'Fixierung lösen' : 'Bereich geöffnet halten');
+        pin.title = pref.pinned ? 'Fixierung lösen' : 'Bereich geöffnet halten';
+        pin.classList.toggle('bg-[#c9973e]/20', pref.pinned);
+        pin.classList.toggle('ring-1', pref.pinned);
+        pin.classList.toggle('ring-[#c9973e]/50', pref.pinned);
+        pin.classList.toggle('text-[#e5b55c]', pref.pinned);
+      }
+    }
+
+    function saveDashboardSectionPreferences() {
+      try {
+        localStorage.setItem(DASHBOARD_SECTION_PREF_KEY, JSON.stringify(dashboardSectionPreferences));
+      } catch (err) {
+        console.warn('Dashboard-Bereiche konnten nicht gespeichert werden:', err);
+      }
+      updateDashboardSectionsUI();
+    }
+
+    function toggleDashboardSection(section) {
+      const pref = dashboardSectionPreferences[section];
+      if (!pref || pref.pinned) return;
+      pref.expanded = !pref.expanded;
+      saveDashboardSectionPreferences();
+    }
+
+    function toggleDashboardSectionPin(section) {
+      const pref = dashboardSectionPreferences[section];
+      if (!pref) return;
+      pref.pinned = !pref.pinned;
+      if (pref.pinned) pref.expanded = true;
+      saveDashboardSectionPreferences();
+    }
+
     function renderDashboard() {
       updateDashboardMetricsUI();
+      updateDashboardSectionsUI();
       document.getElementById('dash-greeting').textContent = `Hallo, ${getDisplayName(currentRole)}`;
       const now = new Date();
       document.getElementById('dash-date').textContent = now.toLocaleDateString('de-DE', {
