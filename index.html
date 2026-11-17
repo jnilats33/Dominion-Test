@@ -264,7 +264,15 @@
         </div>
 
         <!-- Quick Overview Metrics -->
-        <div class="grid grid-cols-2 sm:grid-cols-4 gap-3">
+        <section class="mb-1" aria-label="Dashboard-Übersicht">
+          <div class="flex items-center justify-between gap-2 mb-3">
+            <button type="button" id="dashboard-metrics-toggle" onclick="toggleDashboardMetrics()" aria-expanded="true" aria-controls="dashboard-metrics-grid" class="flex items-center gap-2 text-sm font-semibold text-slate-200 hover:text-[#e5b55c] transition">
+              <span id="dashboard-metrics-arrow" aria-hidden="true">▾</span>
+              <span>Übersicht</span>
+            </button>
+            <button type="button" id="dashboard-metrics-pin" onclick="toggleDashboardMetricsPin()" aria-pressed="false" title="Übersicht geöffnet halten" aria-label="Übersicht geöffnet halten" class="px-2.5 py-1.5 rounded-lg text-slate-400 hover:text-[#e5b55c] hover:bg-white/5 transition">📌</button>
+          </div>
+          <div id="dashboard-metrics-grid" class="grid grid-cols-2 sm:grid-cols-4 gap-3">
           <div onclick="switchTab('kalender')" class="glass-card rounded-2xl p-4 cursor-pointer hover:border-[#c9973e]/50 transition">
             <div class="flex items-center justify-between text-slate-400 text-xs mb-1">
               <span>Termine</span>
@@ -327,7 +335,8 @@
             <div id="stat-regeln" class="text-2xl font-bold text-white">0</div>
             <div class="text-[11px] text-[#c9973e] mt-1">Gesamtbestand</div>
           </div>
-        </div>
+          </div>
+        </section>
 
         <!-- LIVE ACTIVITY STREAM / FEED -->
         <div class="glass-card rounded-2xl p-5 border border-[#c9973e]/25">
@@ -1666,7 +1675,63 @@
       renderEinstellungen();
     }
 
+    // Dashboard layout is a per-browser preference, not shared room data.
+    const DASHBOARD_METRICS_PREF_KEY = 'dominion-test-dashboard-metrics-v1';
+    let dashboardMetricsPinned = false;
+    let dashboardMetricsExpanded = true;
+    try {
+      const savedMetrics = JSON.parse(localStorage.getItem(DASHBOARD_METRICS_PREF_KEY) || '{}');
+      dashboardMetricsPinned = savedMetrics.pinned === true;
+      dashboardMetricsExpanded = dashboardMetricsPinned || savedMetrics.expanded !== false;
+    } catch (err) {
+      console.warn('Dashboard-Ansicht konnte nicht geladen werden:', err);
+    }
+
+    function updateDashboardMetricsUI() {
+      const grid = document.getElementById('dashboard-metrics-grid');
+      const toggle = document.getElementById('dashboard-metrics-toggle');
+      const arrow = document.getElementById('dashboard-metrics-arrow');
+      const pin = document.getElementById('dashboard-metrics-pin');
+      if (!grid || !toggle || !arrow || !pin) return;
+      grid.classList.toggle('hidden', !dashboardMetricsExpanded);
+      toggle.setAttribute('aria-expanded', String(dashboardMetricsExpanded));
+      toggle.title = dashboardMetricsPinned ? 'Zum Einklappen zuerst Reißzwecke lösen' : (dashboardMetricsExpanded ? 'Übersicht einklappen' : 'Übersicht ausklappen');
+      arrow.textContent = dashboardMetricsExpanded ? '▾' : '▸';
+      pin.setAttribute('aria-pressed', String(dashboardMetricsPinned));
+      pin.setAttribute('aria-label', dashboardMetricsPinned ? 'Fixierung der Übersicht lösen' : 'Übersicht geöffnet halten');
+      pin.title = dashboardMetricsPinned ? 'Fixierung lösen' : 'Übersicht geöffnet halten';
+      pin.classList.toggle('bg-[#c9973e]/20', dashboardMetricsPinned);
+      pin.classList.toggle('ring-1', dashboardMetricsPinned);
+      pin.classList.toggle('ring-[#c9973e]/50', dashboardMetricsPinned);
+      pin.classList.toggle('text-[#e5b55c]', dashboardMetricsPinned);
+    }
+
+    function saveDashboardMetricsPreference() {
+      try {
+        localStorage.setItem(DASHBOARD_METRICS_PREF_KEY, JSON.stringify({
+          pinned: dashboardMetricsPinned,
+          expanded: dashboardMetricsExpanded
+        }));
+      } catch (err) {
+        console.warn('Dashboard-Ansicht konnte nicht gespeichert werden:', err);
+      }
+      updateDashboardMetricsUI();
+    }
+
+    function toggleDashboardMetrics() {
+      if (dashboardMetricsPinned) return;
+      dashboardMetricsExpanded = !dashboardMetricsExpanded;
+      saveDashboardMetricsPreference();
+    }
+
+    function toggleDashboardMetricsPin() {
+      dashboardMetricsPinned = !dashboardMetricsPinned;
+      if (dashboardMetricsPinned) dashboardMetricsExpanded = true;
+      saveDashboardMetricsPreference();
+    }
+
     function renderDashboard() {
+      updateDashboardMetricsUI();
       document.getElementById('dash-greeting').textContent = `Hallo, ${getDisplayName(currentRole)}`;
       const now = new Date();
       document.getElementById('dash-date').textContent = now.toLocaleDateString('de-DE', {
