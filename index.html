@@ -178,6 +178,14 @@
         </button>
       </div>
 
+      <div id="daisy-pin-box" class="hidden mt-2 space-y-4 animate-fade">
+        <div class="text-sm text-slate-300">Bitte Daisy-PIN eingeben</div>
+        <input id="daisy-pin-input" type="password" inputmode="numeric" maxlength="8" placeholder="••••" onkeydown="if(event.key==='Enter') verifyDaisyPin()" class="w-full px-4 py-3.5 text-center text-2xl tracking-[0.4em] font-bold" />
+        <div class="flex gap-3">
+          <button onclick="cancelPinPrompt()" class="flex-1 py-3 rounded-xl bg-white/5 hover:bg-white/10 text-sm">Zurück</button>
+          <button onclick="verifyDaisyPin()" class="flex-1 py-3 rounded-xl gold-gradient font-semibold text-sm">Entsperren</button>
+        </div>
+      </div>
       <!-- Master PIN Prompt -->
       <div id="master-pin-box" class="hidden mt-2 space-y-4 animate-fade">
         <div class="text-sm text-slate-300">Bitte Master-PIN eingeben</div>
@@ -627,6 +635,17 @@
             </div>
           </div>
 
+          <div id="settings-panel-daisy-security" class="hidden space-y-5">
+            <div class="p-4 rounded-2xl bg-white/[0.03] border border-slate-800 space-y-4">
+              <h3 class="font-semibold text-sm text-white">🔐 Daisy-PIN</h3>
+              <p class="text-xs text-slate-400">Nach der Einrichtung schützt die PIN die normale Daisy-Anmeldung. Ein unmittelbar zuvor angemeldeter Master kann ohne Daisy-PIN wechseln.</p>
+              <p id="daisy-pin-status" class="text-xs text-amber-300"></p>
+              <label class="block text-xs text-slate-400">Bisherige PIN (nur bei Änderung)<input id="daisy-old-pin" type="password" inputmode="numeric" maxlength="8" autocomplete="off" class="w-full px-3.5 py-2.5 mt-1" /></label>
+              <label class="block text-xs text-slate-400">Neue PIN (4–8 Ziffern)<input id="daisy-new-pin" type="password" inputmode="numeric" maxlength="8" autocomplete="new-password" class="w-full px-3.5 py-2.5 mt-1" /></label>
+              <label class="block text-xs text-slate-400">Neue PIN bestätigen<input id="daisy-confirm-pin" type="password" inputmode="numeric" maxlength="8" autocomplete="new-password" class="w-full px-3.5 py-2.5 mt-1" /></label>
+              <button onclick="changeDaisyPin()" class="px-5 py-2.5 rounded-xl gold-gradient font-semibold text-xs">Daisy-PIN speichern</button>
+            </div>
+          </div>
           <!-- SUB-TAB A: BASICS (Visible to BOTH Master & Daisy) -->
           <div id="settings-panel-basics" class="space-y-5">
             <div class="p-4 rounded-2xl bg-white/[0.03] border border-slate-800 space-y-4">
@@ -965,6 +984,7 @@
       return {
         version: '2.3',
         pin: '1234',
+        daisyPin: null,
         firebase: {
           url: DEFAULT_FB_URL,
           room: DEFAULT_ROOM_CODE
@@ -1004,6 +1024,7 @@
 
     let appState = createDefaultState();
     let currentRole = null;
+    let masterToDaisyBypass = false;
     let activeTab = 'dashboard';
     let activeMgmtCategory = 'kleidung';
     let activeSettingsSubTab = 'basics';
@@ -1059,6 +1080,7 @@
         ...incoming,
         version: '2.3',
         pin: incoming.pin || def.pin,
+        daisyPin: typeof incoming.daisyPin === 'string' && /^\d{4,8}$/.test(incoming.daisyPin) ? incoming.daisyPin : null,
         firebase: { url: DEFAULT_FB_URL, room: DEFAULT_ROOM_CODE },
         basics: { ...def.basics, ...(incoming.basics || {}) },
         permissions: { ...def.permissions, ...(incoming.permissions || {}) },
@@ -1586,12 +1608,30 @@
         pinInput.value = '';
         setTimeout(() => pinInput.focus(), 80);
       } else {
-        enterApp('Daisy');
+        if (masterToDaisyBypass || !appState.daisyPin) {
+          enterApp('Daisy');
+        } else {
+          document.getElementById('role-select-buttons').classList.add('hidden');
+          document.getElementById('daisy-pin-box').classList.remove('hidden');
+          const pinInput = document.getElementById('daisy-pin-input');
+          pinInput.value = '';
+          setTimeout(() => pinInput.focus(), 80);
+        }
+      }
+    }
+
+    function verifyDaisyPin() {
+      const entered = document.getElementById('daisy-pin-input').value.trim();
+      if (appState.daisyPin && entered === appState.daisyPin) enterApp('Daisy');
+      else {
+        showToast('Falscher Daisy-PIN!', 'error');
+        document.getElementById('daisy-pin-input').value = '';
       }
     }
 
     function cancelPinPrompt() {
       document.getElementById('master-pin-box').classList.add('hidden');
+      document.getElementById('daisy-pin-box').classList.add('hidden');
       document.getElementById('role-select-buttons').classList.remove('hidden');
     }
 
@@ -1607,6 +1647,7 @@
 
     function enterApp(role) {
       currentRole = role;
+      masterToDaisyBypass = false;
       document.getElementById('role-screen').classList.add('hidden');
       document.getElementById('main-app').classList.remove('hidden');
       document.getElementById('bottom-nav').classList.remove('hidden');
@@ -1621,6 +1662,7 @@
     }
 
     function logoutRole() {
+      masterToDaisyBypass = currentRole === 'Master';
       currentRole = null;
       document.getElementById('main-app').classList.add('hidden');
       document.getElementById('bottom-nav').classList.add('hidden');
@@ -2847,7 +2889,7 @@
           </button>
         `;
       } else {
-        if (!['basics', 'ansicht', 'benachrichtigungen'].includes(activeSettingsSubTab)) activeSettingsSubTab = 'basics';
+        if (!['basics', 'ansicht', 'benachrichtigungen', 'daisy-security'].includes(activeSettingsSubTab)) activeSettingsSubTab = 'basics';
         subTabsEl.innerHTML = `
           <button onclick="selectSettingsSubTab('basics')" class="px-3.5 py-2 rounded-xl text-xs font-semibold whitespace-nowrap transition ${activeSettingsSubTab === 'basics' ? 'gold-gradient shadow' : 'bg-white/5 text-slate-300 hover:bg-white/10'}">
             🎛️ Basics
@@ -2855,12 +2897,15 @@
           <button onclick="selectSettingsSubTab('ansicht')" class="px-3.5 py-2 rounded-xl text-xs font-semibold whitespace-nowrap transition ${activeSettingsSubTab === 'ansicht' ? 'gold-gradient shadow' : 'bg-white/5 text-slate-300 hover:bg-white/10'}">
             👁️ Ansicht
           </button>
+          <button onclick="selectSettingsSubTab('daisy-security')" class="px-3.5 py-2 rounded-xl text-xs font-semibold whitespace-nowrap transition ${activeSettingsSubTab === 'daisy-security' ? 'gold-gradient shadow' : 'bg-white/5 text-slate-300 hover:bg-white/10'}">🔐 Sicherheit</button>
           <button onclick="selectSettingsSubTab('benachrichtigungen')" class="px-3.5 py-2 rounded-xl text-xs font-semibold whitespace-nowrap transition ${activeSettingsSubTab === 'benachrichtigungen' ? 'gold-gradient shadow' : 'bg-white/5 text-slate-300 hover:bg-white/10'}">
             🔔 Benachrichtigungen
           </button>
         `;
       }
 
+      document.getElementById('settings-panel-daisy-security').classList.toggle('hidden', isMaster || activeSettingsSubTab !== 'daisy-security');
+      document.getElementById('daisy-pin-status').textContent = appState.daisyPin ? 'PIN eingerichtet' : 'Noch keine PIN eingerichtet';
       document.getElementById('settings-panel-ansicht').classList.toggle('hidden', activeSettingsSubTab !== 'ansicht');
       renderDashboardVisibilitySettings();
       document.getElementById('settings-panel-basics').classList.toggle('hidden', activeSettingsSubTab !== 'basics');
@@ -2922,7 +2967,7 @@
     }
 
     function selectSettingsSubTab(subTab) {
-      if (currentRole !== 'Master' && !['basics', 'ansicht', 'benachrichtigungen'].includes(subTab)) return;
+      if (currentRole !== 'Master' && !['basics', 'ansicht', 'benachrichtigungen', 'daisy-security'].includes(subTab)) return;
       activeSettingsSubTab = subTab;
       renderEinstellungen();
     }
@@ -3022,6 +3067,21 @@
       saveStateLocalOnly();
       initFirebaseSync();
       showToast('TEST: Firebase-Raum bleibt fest isoliert.');
+    }
+
+    function changeDaisyPin() {
+      if (currentRole !== 'Daisy') return;
+      const oldPin = document.getElementById('daisy-old-pin').value.trim();
+      const newPin = document.getElementById('daisy-new-pin').value.trim();
+      const confirmation = document.getElementById('daisy-confirm-pin').value.trim();
+      if (appState.daisyPin && oldPin !== appState.daisyPin) return showToast('Bisherige Daisy-PIN falsch.', 'error');
+      if (!/^\d{4,8}$/.test(newPin)) return showToast('PIN: 4 bis 8 Ziffern erforderlich.', 'error');
+      if (newPin !== confirmation) return showToast('Die neuen PINs stimmen nicht überein.', 'error');
+      appState.daisyPin = newPin;
+      ['daisy-old-pin', 'daisy-new-pin', 'daisy-confirm-pin'].forEach(id => document.getElementById(id).value = '');
+      persistState();
+      renderEinstellungen();
+      showToast('Daisy-PIN gespeichert.');
     }
 
     function changeMasterPin() {
