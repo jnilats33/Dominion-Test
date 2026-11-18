@@ -863,7 +863,7 @@
 
   <!-- Bottom Navigation Bar (7 Main Tabs) -->
   <nav id="bottom-nav" class="hidden fixed bottom-0 inset-x-0 z-40 bg-[#171a24]/95 backdrop-blur-lg border-t border-slate-800 px-1 py-1.5">
-    <div class="max-w-4xl mx-auto grid grid-cols-7 gap-0.5">
+    <div class="max-w-4xl mx-auto grid grid-cols-9 gap-0.5">
       <button data-tab="dashboard" onclick="switchTab('dashboard')" class="nav-btn flex flex-col items-center justify-center py-1.5 px-0.5 rounded-xl text-slate-400 hover:text-white transition">
         <span class="text-base sm:text-lg leading-none">🏠</span>
         <span class="text-[9px] sm:text-[10px] mt-1 font-medium truncate max-w-full">Dashboard</span>
@@ -884,6 +884,8 @@
         <span class="text-base sm:text-lg leading-none">⚖️</span>
         <span class="text-[9px] sm:text-[10px] mt-1 font-medium truncate max-w-full">Strafbuch</span>
       </button>
+      <button data-tab="aufgaben" onclick="switchTab('aufgaben')" class="nav-btn flex flex-col items-center justify-center py-1.5 px-0.5 rounded-xl text-slate-400 hover:text-white transition"><span class="text-base sm:text-lg leading-none">✅</span><span class="text-[9px] sm:text-[10px] mt-1 font-medium">Aufgaben</span></button>
+      <button data-tab="rewards" onclick="switchTab('rewards')" class="nav-btn flex flex-col items-center justify-center py-1.5 px-0.5 rounded-xl text-slate-400 hover:text-white transition"><span class="text-base sm:text-lg leading-none">🎯</span><span class="text-[9px] sm:text-[10px] mt-1 font-medium">Rewards</span></button>
       <button data-tab="verwaltung" onclick="switchTab('verwaltung')" class="nav-btn flex flex-col items-center justify-center py-1.5 px-0.5 rounded-xl text-slate-400 hover:text-white transition">
         <span class="text-base sm:text-lg leading-none">📦</span>
         <span class="text-[9px] sm:text-[10px] mt-1 font-medium truncate max-w-full">Verwaltung</span>
@@ -964,7 +966,8 @@
       { id: 'strafen', label: '⛓️ Strafen' },
       { id: 'belohnungen', label: '🎁 Belohnungen' },
       { id: 'regeln', label: '📜 Regeln' },
-      { id: 'aufgaben', label: '✅ Aufgaben' }
+      { id: 'aufgaben', label: '✅ Aufgaben' },
+      { id: 'rewards', label: '🎯 Rewards' }
     ];
 
     function createDefaultPermissions() {
@@ -1018,6 +1021,8 @@
           aufgaben: []
         },
         activityFeed: [],
+        rewardLedger: [],
+        rewardRules: { kleidung: 0, toys: 0 },
         fcmToken: null
       };
     }
@@ -1027,6 +1032,7 @@
     let masterToDaisyBypass = false;
     let activeTab = 'dashboard';
     let activeMgmtCategory = 'kleidung';
+    let editingTaskId = null;
     let activeSettingsSubTab = 'basics';
     let calFilterRole = 'all'; // 'all' | 'Master' | 'Daisy'
     let calViewYear = new Date().getFullYear();
@@ -1090,6 +1096,8 @@
         strafbuch: Array.isArray(incoming.strafbuch) ? incoming.strafbuch : [],
         mgmt: { ...def.mgmt, ...(incoming.mgmt || {}) },
         activityFeed: Array.isArray(incoming.activityFeed) ? incoming.activityFeed : [],
+        rewardLedger: Array.isArray(incoming.rewardLedger) ? incoming.rewardLedger : [],
+        rewardRules: { ...def.rewardRules, ...(incoming.rewardRules || {}) },
         fcmToken: incoming.fcmToken || null
       };
       if (typeof merged.permissions.username !== 'boolean') {
@@ -1553,7 +1561,7 @@
             showToast('Dieser Bereich ist aktuell durch den Master gesperrt.', 'error');
             return;
           }
-        } else if (['kalender', 'einkauf', 'strafbuch'].includes(tabId)) {
+        } else if (['kalender', 'einkauf', 'strafbuch', 'aufgaben', 'rewards'].includes(tabId)) {
           const perm = appState.permissions[tabId];
           if (perm && !perm.visible) {
             showToast('Dieser Bereich ist aktuell durch den Master gesperrt.', 'error');
@@ -1702,7 +1710,7 @@
 
       activeTab = tabId;
 
-      const allTabs = ['dashboard', 'chat', 'kalender', 'einkauf', 'strafbuch', 'verwaltung', 'einstellungen'];
+      const allTabs = ['dashboard', 'chat', 'kalender', 'einkauf', 'strafbuch', 'aufgaben', 'rewards', 'verwaltung', 'einstellungen'];
       allTabs.forEach(t => {
         const el = document.getElementById('tab-' + t);
         if (el) el.classList.toggle('hidden', t !== tabId);
@@ -1744,7 +1752,7 @@
 
       document.querySelectorAll('.nav-btn').forEach(btn => {
         const tab = btn.getAttribute('data-tab');
-        if (currentRole === 'Daisy' && ['kalender', 'einkauf', 'strafbuch'].includes(tab)) {
+        if (currentRole === 'Daisy' && ['kalender', 'einkauf', 'strafbuch', 'aufgaben', 'rewards'].includes(tab)) {
           btn.classList.toggle('hidden', !hasPermission(tab, 'visible'));
         } else {
           btn.classList.remove('hidden');
@@ -1757,6 +1765,8 @@
       renderEinkauf();
       renderStrafbuch();
       renderVerwaltung();
+      renderTasks();
+      renderRewards();
       renderEinstellungen();
     }
 
@@ -1880,7 +1890,8 @@
       { id: 'news', label: 'Update-News' },
       { id: 'metrics', label: 'Übersicht' },
       { id: 'feed', label: 'Aktivitäts-Stream' },
-      { id: 'events', label: 'Nächste Termine' }
+      { id: 'events', label: 'Nächste Termine' },
+      { id: 'rewards', label: 'Punktekonto / Rewards' }
     ];
     function getDashboardVisibility() {
       try {
@@ -1909,7 +1920,7 @@
       const prefs = getDashboardVisibility();
       for (const entry of DASHBOARD_VISIBLE_SECTIONS) {
         const el = document.getElementById('dashboard-section-' + entry.id);
-        if (el) el.classList.toggle('hidden', prefs[entry.id] === false);
+        if (el) el.classList.toggle('hidden', prefs[entry.id] === false || (entry.id === 'rewards' && currentRole === 'Daisy' && !hasPermission('rewards', 'visible')));
       }
     }
     function renderDashboardVisibilitySettings() {
@@ -1935,6 +1946,7 @@
     function renderDashboard() {
       updateDashboardMetricPermissions();
       updateDashboardVisibilityUI();
+      renderDashboardRewards();
       updateDashboardMetricsUI();
       updateDashboardSectionsUI();
       document.getElementById('dash-greeting').textContent = `Hallo, ${getDisplayName(currentRole)}`;
@@ -2697,7 +2709,7 @@
     }
 
     function renderVerwaltung() {
-      const visibleCats = MGMT_CATEGORIES.filter(cat => hasPermission(cat.id, 'visible'));
+      const visibleCats = MGMT_CATEGORIES.filter(cat => cat.id !== 'aufgaben' && hasPermission(cat.id, 'visible'));
       const subTabsEl = document.getElementById('verwaltung-subtabs');
 
       if (visibleCats.length === 0) {
@@ -2736,6 +2748,7 @@
       numberMgmtItems(appState);
       const items = appState.mgmt[activeMgmtCategory] || [];
       const listEl = document.getElementById('mgmt-items-list');
+      const rewardCategory = ['belohnungen', 'strafen'].includes(activeMgmtCategory);
 
       if (items.length === 0) {
         listEl.innerHTML = `<p class="text-xs text-slate-500 text-center py-6">Noch keine Einträge in dieser Kategorie.</p>`;
@@ -2754,6 +2767,7 @@
               ${item.itemNumber ? '<span class="text-xs font-mono text-amber-300">' + escapeHtml(item.itemNumber) + '</span>' : ''}
               <span class="font-semibold text-sm ${item.done ? 'line-through text-slate-500' : 'text-white'} truncate">${escapeHtml(item.title)}</span>
             </div>
+            ${rewardCategory ? `<p class="text-xs text-amber-300">Punktwert: ${Number(item.rewardPoints || 0)}</p>` : ''}
             ${item.desc ? `<p class="text-xs text-slate-400 mt-1 break-words">${escapeHtml(item.desc)}</p>` : ''}
             ${item.imgUrl ? `<img src="${escapeHtml(item.imgUrl)}" alt="${escapeHtml(item.title)}" class="rounded-xl max-h-56 w-auto mt-2 border border-slate-700" />` : ''}
           </div>
@@ -2811,6 +2825,7 @@
       const desc = document.getElementById('mgmt-desc').value.trim();
       if (!title) { showToast('Bitte eine Bezeichnung eingeben.', 'error'); return; }
       const oldTitle = item.title || ''; item.title = title; item.desc = desc;
+      if (['belohnungen','strafen'].includes(catId)) { const v = prompt('Punktwert (0 = nicht festgelegt)', item.rewardPoints || 0); if (v !== null) item.rewardPoints = Math.max(0, Number(v) || 0); }
       if (['kleidung', 'toys'].includes(catId)) { if (mgmtDraftImage) item.imgUrl = mgmtDraftImage; else if (mgmtImageRemoved) delete item.imgUrl; }
       const catObj = MGMT_CATEGORIES.find(category => category.id === catId);
       logActivity('hat ' + (catObj ? catObj.singular : 'Eintrag') + ' bearbeitet: „' + oldTitle + '“ → „' + title + '“', 'verwaltung', catId, item.id);
@@ -2832,6 +2847,7 @@
       const next = (appState.mgmtCounters[activeMgmtCategory] || 0) + 1;
       appState.mgmtCounters[activeMgmtCategory] = next;
       const newItem = { id: 'mgmt-' + Date.now() + '-' + Math.random().toString(36).slice(2, 7), itemNumber: prefix + '-' + String(next).padStart(4, '0'), title, desc, done: false };
+      if (['belohnungen','strafen'].includes(activeMgmtCategory)) { const v = prompt('Punktwert für diesen Eintrag', '0'); if (v === null) return; newItem.rewardPoints = Math.max(0, Number(v) || 0); }
       if (['kleidung', 'toys'].includes(activeMgmtCategory) && mgmtDraftImage) newItem.imgUrl = mgmtDraftImage;
       if (!Array.isArray(appState.mgmt[activeMgmtCategory])) {
         appState.mgmt[activeMgmtCategory] = [];
