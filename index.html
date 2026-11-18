@@ -629,6 +629,7 @@
                 <input id="task-deadline" type="datetime-local" class="w-full mt-1 px-2 py-2"/>
               </label>
             </div>
+            <label id="task-kind-wrap" class="text-xs text-slate-300">Aufgabenart<select id="task-kind" onchange="updateTaskForm()" class="w-full mt-1 px-2 py-2"><option value="reward">Mit Punkten und Prüfung</option><option value="personal">Organisatorisch – ohne Punkte und Prüfung</option></select></label>
             <div id="task-points-fields" class="grid grid-cols-2 gap-2">
               <label class="text-xs text-slate-300">Punkte bei Erfüllung<input id="task-plus" type="number" min="0" value="0" class="w-full mt-1 px-2 py-2"/></label>
               <label class="text-xs text-slate-300">Abzug pro Fristverstoß<input id="task-minus" type="number" min="0" value="0" class="w-full mt-1 px-2 py-2"/></label>
@@ -2789,6 +2790,7 @@
         if (task.taskV26) return;
         task.taskV26 = true;
         task.assignee = 'Master';
+        task.taskKind = 'personal';
         task.status = task.done ? 'done' : 'open';
         task.plusPoints = 0;
         task.minusPoints = 0;
@@ -2801,7 +2803,7 @@
       migrateLegacyTasks();
       let changed = false;
       for (const task of appState.mgmt.aufgaben) {
-        if (task.assignee !== 'Daisy' || task.status !== 'open' || !task.deadline) continue;
+        if (task.assignee !== 'Daisy' || task.taskKind === 'personal' || task.status !== 'open' || !task.deadline) continue;
         const deadlineTime = new Date(task.deadline).getTime();
         if (!Number.isFinite(deadlineTime) || Date.now() <= deadlineTime) continue;
         const key = 'task:' + task.id + ':late:' + (task.cycle || 0);
@@ -2815,28 +2817,33 @@
     }
     function updateTaskForm() {
       const assignee = document.getElementById('task-assignee').value;
-      document.getElementById('task-points-fields').classList.toggle('hidden', assignee !== 'Daisy');
+      const kind = document.getElementById('task-kind');
+      if (currentRole === 'Daisy') { kind.value = 'personal'; kind.disabled = true; } else kind.disabled = assignee !== 'Daisy';
+      document.getElementById('task-kind-wrap').classList.toggle('hidden', assignee !== 'Daisy');
+      document.getElementById('task-points-fields').classList.toggle('hidden', assignee !== 'Daisy' || kind.value !== 'reward');
     }
     function resetTaskForm() {
       editingTaskId = null;
       ['task-title', 'task-desc', 'task-deadline'].forEach(id => document.getElementById(id).value = '');
       document.getElementById('task-assignee').value = 'Daisy';
+      document.getElementById('task-kind').value = currentRole === 'Daisy' ? 'personal' : 'reward';
       document.getElementById('task-plus').value = 0;
       document.getElementById('task-minus').value = 0;
       updateTaskForm();
     }
     function saveTask() {
-      if (currentRole !== 'Master' && (!hasPermission('aufgaben', 'add') || document.getElementById('task-assignee').value !== 'Master')) return;
+      if (currentRole !== 'Master' && (!hasPermission('aufgaben', 'add') || document.getElementById('task-kind').value !== 'personal')) return;
       const title = document.getElementById('task-title').value.trim();
       const desc = document.getElementById('task-desc').value.trim();
       const assignee = document.getElementById('task-assignee').value;
+      const kind = currentRole === 'Daisy' || assignee === 'Master' ? 'personal' : document.getElementById('task-kind').value;
       const deadline = document.getElementById('task-deadline').value;
       if (!title || !deadline || !Number.isFinite(new Date(deadline).getTime())) return showToast('Titel und gültige Deadline erforderlich.', 'error');
       if (new Date(deadline).getTime() <= Date.now()) return showToast('Deadline muss in der Zukunft liegen.', 'error');
       const tasks = appState.mgmt.aufgaben;
       const task = editingTaskId ? tasks.find(t => t.id === editingTaskId) : null;
       if (editingTaskId && (!task || currentRole !== 'Master' || task.status !== 'open')) return;
-      const values = { title, desc, assignee, deadline, plusPoints: assignee === 'Daisy' ? rewardAmount(document.getElementById('task-plus').value) : 0, minusPoints: assignee === 'Daisy' ? rewardAmount(document.getElementById('task-minus').value) : 0 };
+      const values = { title, desc, assignee, deadline, taskKind: kind, plusPoints: kind === 'reward' ? rewardAmount(document.getElementById('task-plus').value) : 0, minusPoints: kind === 'reward' ? rewardAmount(document.getElementById('task-minus').value) : 0 };
       if (task) Object.assign(task, values);
       else tasks.unshift({ id: 'task-' + Date.now() + '-' + Math.random().toString(36).slice(2, 7), taskV26: true, status: 'open', cycle: 0, history: [], done: false, ...values });
       logActivity('hat Aufgabe angelegt/bearbeitet: „' + title + '“', 'aufgaben');
@@ -2851,6 +2858,7 @@
       document.getElementById('task-desc').value = t.desc || '';
       document.getElementById('task-assignee').value = t.assignee;
       document.getElementById('task-deadline').value = t.deadline || '';
+      document.getElementById('task-kind').value = t.taskKind || (t.assignee === 'Daisy' ? 'reward' : 'personal');
       document.getElementById('task-plus').value = t.plusPoints || 0;
       document.getElementById('task-minus').value = t.minusPoints || 0;
       updateTaskForm();
@@ -2858,7 +2866,7 @@
     }
     function reportTask(id) {
       const task = appState.mgmt.aufgaben.find(t => t.id === id);
-      if (!task || task.assignee !== 'Daisy' || currentRole !== 'Daisy' || !hasPermission('aufgaben', 'visible') || !['open','overdue'].includes(task.status)) return;
+      if (!task || task.assignee !== 'Daisy' || task.taskKind === 'personal' || currentRole !== 'Daisy' || !hasPermission('aufgaben', 'visible') || !['open','overdue'].includes(task.status)) return;
       processTaskDeadlines();
       const timestamp = Date.now();
       task.reportedAt = timestamp;
@@ -2867,9 +2875,8 @@
       persistState(); refreshAllUI(); showToast('Zur Prüfung eingereicht.');
     }
     function completeMasterTask(id) {
-      if (currentRole !== 'Master') return;
       const task = appState.mgmt.aufgaben.find(t => t.id === id);
-      if (!task || task.assignee !== 'Master' || task.status === 'done') return;
+      if (!task || (task.taskKind !== 'personal' && task.assignee !== 'Master') || task.status === 'done' || (currentRole !== 'Master' && (currentRole !== 'Daisy' || task.assignee !== 'Daisy' || !hasPermission('aufgaben', 'visible')))) return;
       task.status = 'done'; task.done = true;
       (task.history ||= []).push({ event: 'Erledigt', at: Date.now() });
       persistState(); refreshAllUI();
@@ -2877,7 +2884,7 @@
     function reviewTask(id, decision) {
       if (currentRole !== 'Master') return;
       const task = appState.mgmt.aufgaben.find(t => t.id === id);
-      if (!task || task.assignee !== 'Daisy' || !['review','overdue'].includes(task.status)) return;
+      if (!task || task.assignee !== 'Daisy' || task.taskKind === 'personal' || !['review','overdue'].includes(task.status)) return;
       if (decision === 'extend') {
         const deadline = prompt('Neue Deadline (JJJJ-MM-TTTHH:MM)', task.deadline || '');
         if (!deadline) return;
@@ -2909,16 +2916,17 @@
       const form = document.getElementById('tasks-form');
       form.classList.toggle('hidden', currentRole !== 'Master' && !hasPermission('aufgaben','add'));
       const assignee = document.getElementById('task-assignee');
-      if (currentRole === 'Daisy') { assignee.value = 'Master'; assignee.disabled = true; } else assignee.disabled = false;
+      if (currentRole === 'Daisy') { assignee.disabled = false; document.getElementById('task-kind').value = 'personal'; } else assignee.disabled = false;
       updateTaskForm();
       const labels = { open: ['Offen','text-sky-300','border-sky-800'], review: ['Zur Prüfung','text-amber-300','border-amber-800'], overdue: ['Frist überschritten','text-rose-300','border-rose-800'], done: ['Erfüllt','text-emerald-300','border-emerald-800'], rejected: ['Nicht erfüllt','text-slate-400','border-slate-700'] };
       list.innerHTML = appState.mgmt.aufgaben.map(t => {
         const status = taskStatus(t);
         const style = labels[status];
-        const buttons = t.assignee === 'Master'
-          ? (currentRole === 'Master' && status !== 'done' ? '<button onclick="completeMasterTask(\'' + t.id + '\')" class="px-3 py-1 rounded-lg bg-emerald-900/40 text-emerald-200">Erledigt</button>' : '')
+        const personal = t.taskKind === 'personal' || (t.assignee === 'Master' && t.taskKind !== 'reward');
+        const buttons = personal
+          ? ((currentRole === 'Master' || (currentRole === 'Daisy' && t.assignee === 'Daisy')) && status !== 'done' ? '<button onclick="completeMasterTask(\'' + t.id + '\')" class="px-3 py-1 rounded-lg bg-emerald-900/40 text-emerald-200">Erledigt</button>' : '')
           : (currentRole === 'Daisy' && ['open','overdue'].includes(status) ? '<button onclick="reportTask(\'' + t.id + '\')" class="px-3 py-1 rounded-lg bg-amber-900/40 text-amber-200">Erledigt melden</button>' : '');
-        const reviewButtons = currentRole === 'Master' && t.assignee === 'Daisy' && ['review','overdue'].includes(status)
+        const reviewButtons = !personal && currentRole === 'Master' && t.assignee === 'Daisy' && ['review','overdue'].includes(status)
           ? ['accept','reject','extend'].map((d,i) => '<button onclick="reviewTask(\'' + t.id + '\',\'' + d + '\')" class="px-3 py-1 rounded-lg bg-white/10">' + ['Erfüllt','Nicht erfüllt','Frist verlängern'][i] + '</button>').join('')
           : '';
         const edit = currentRole === 'Master' && status === 'open' ? '<button onclick="editTask(\'' + t.id + '\')" class="px-3 py-1 rounded-lg bg-white/10">Bearbeiten</button>' : '';
