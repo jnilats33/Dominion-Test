@@ -2748,6 +2748,193 @@
       if (cameraInput) cameraInput.value = '';
     }
 
+
+    // v2.6 preview: ledger entries use stable event keys to prevent duplicate local bookings.
+    function rewardBalance() {
+      return (appState.rewardLedger || []).reduce((sum, row) => sum + Number(row.amount || 0), 0);
+    }
+    function bookReward(key, amount, description) {
+      if (!Number.isFinite(Number(amount)) || !amount) return false;
+      if (!Array.isArray(appState.rewardLedger)) appState.rewardLedger = [];
+      if (appState.rewardLedger.some(row => row.id === key)) return false;
+      appState.rewardLedger.push({ id: key, amount: Number(amount), description, timestamp: Date.now() });
+      return true;
+    }
+    function rewardAmount(value) {
+      const n = Number(value);
+      return Number.isFinite(n) ? Math.max(0, Math.floor(n)) : 0;
+    }
+    function taskStatus(task) {
+      if (task.status === 'done' || task.status === 'rejected') return task.status;
+      if (task.status === 'review') return 'review';
+      if (task.assignee === 'Daisy' && task.deadline && Date.now() > new Date(task.deadline).getTime()) return 'overdue';
+      if (task.assignee === 'Master' && task.deadline && Date.now() > new Date(task.deadline).getTime()) return 'overdue';
+      return 'open';
+    }
+    function migrateLegacyTasks() {
+      if (!Array.isArray(appState.mgmt.aufgaben)) appState.mgmt.aufgaben = [];
+      appState.mgmt.aufgaben.forEach(task => {
+        if (task.taskV26) return;
+        task.taskV26 = true;
+        task.assignee = 'Master';
+        task.status = task.done ? 'done' : 'open';
+        task.plusPoints = 0;
+        task.minusPoints = 0;
+        task.cycle = 0;
+        task.deadline = '';
+        task.history = [];
+      });
+    }
+    function processTaskDeadlines() {
+      migrateLegacyTasks();
+      let changed = false;
+      for (const task of appState.mgmt.aufgaben) {
+        if (task.assignee !== 'Daisy' || task.status !== 'open' || !task.deadline) continue;
+        const deadlineTime = new Date(task.deadline).getTime();
+        if (!Number.isFinite(deadlineTime) || Date.now() <= deadlineTime) continue;
+        const key = 'task:' + task.id + ':late:' + (task.cycle || 0);
+        bookReward(key, -rewardAmount(task.minusPoints), 'Frist überschritten: ' + task.title);
+        task.status = 'overdue';
+        (task.history ||= []).push({ event: 'Frist überschritten', at: Date.now() });
+        changed = true;
+      }
+      if (changed) persistState();
+      return changed;
+    }
+    function updateTaskForm() {
+      const assignee = document.getElementById('task-assignee').value;
+      document.getElementById('task-points-fields').classList.toggle('hidden', assignee !== 'Daisy');
+    }
+    function resetTaskForm() {
+      editingTaskId = null;
+      ['task-title', 'task-desc', 'task-deadline'].forEach(id => document.getElementById(id).value = '');
+      document.getElementById('task-assignee').value = 'Daisy';
+      document.getElementById('task-plus').value = 0;
+      document.getElementById('task-minus').value = 0;
+      updateTaskForm();
+    }
+    function saveTask() {
+      if (currentRole !== 'Master' && (!hasPermission('aufgaben', 'add') || document.getElementById('task-assignee').value !== 'Master')) return;
+      const title = document.getElementById('task-title').value.trim();
+      const desc = document.getElementById('task-desc').value.trim();
+      const assignee = document.getElementById('task-assignee').value;
+      const deadline = document.getElementById('task-deadline').value;
+      if (!title || !deadline || !Number.isFinite(new Date(deadline).getTime())) return showToast('Titel und gültige Deadline erforderlich.', 'error');
+      if (new Date(deadline).getTime() <= Date.now()) return showToast('Deadline muss in der Zukunft liegen.', 'error');
+      const tasks = appState.mgmt.aufgaben;
+      const task = editingTaskId ? tasks.find(t => t.id === editingTaskId) : null;
+      if (editingTaskId && (!task || currentRole !== 'Master' || task.status !== 'open')) return;
+      const values = { title, desc, assignee, deadline, plusPoints: assignee === 'Daisy' ? rewardAmount(document.getElementById('task-plus').value) : 0, minusPoints: assignee === 'Daisy' ? rewardAmount(document.getElementById('task-minus').value) : 0 };
+      if (task) Object.assign(task, values);
+      else tasks.unshift({ id: 'task-' + Date.now() + '-' + Math.random().toString(36).slice(2, 7), taskV26: true, status: 'open', cycle: 0, history: [], done: false, ...values });
+      logActivity('hat Aufgabe angelegt/bearbeitet: „' + title + '“', 'aufgaben');
+      resetTaskForm(); persistState(); refreshAllUI(); showToast('Aufgabe gespeichert.');
+    }
+    function editTask(id) {
+      if (currentRole !== 'Master') return;
+      const t = appState.mgmt.aufgaben.find(t => t.id === id);
+      if (!t || t.status !== 'open') return;
+      editingTaskId = id;
+      document.getElementById('task-title').value = t.title;
+      document.getElementById('task-desc').value = t.desc || '';
+      document.getElementById('task-assignee').value = t.assignee;
+      document.getElementById('task-deadline').value = t.deadline || '';
+      document.getElementById('task-plus').value = t.plusPoints || 0;
+      document.getElementById('task-minus').value = t.minusPoints || 0;
+      updateTaskForm();
+      document.getElementById('tasks-form').scrollIntoView({ behavior: 'smooth' });
+    }
+    function reportTask(id) {
+      const task = appState.mgmt.aufgaben.find(t => t.id === id);
+      if (!task || task.assignee !== 'Daisy' || currentRole !== 'Daisy' || !hasPermission('aufgaben', 'visible') || !['open','overdue'].includes(task.status)) return;
+      processTaskDeadlines();
+      const timestamp = Date.now();
+      task.reportedAt = timestamp;
+      task.status = 'review';
+      (task.history ||= []).push({ event: 'Zur Prüfung eingereicht', at: timestamp });
+      persistState(); refreshAllUI(); showToast('Zur Prüfung eingereicht.');
+    }
+    function completeMasterTask(id) {
+      if (currentRole !== 'Master') return;
+      const task = appState.mgmt.aufgaben.find(t => t.id === id);
+      if (!task || task.assignee !== 'Master' || task.status === 'done') return;
+      task.status = 'done'; task.done = true;
+      (task.history ||= []).push({ event: 'Erledigt', at: Date.now() });
+      persistState(); refreshAllUI();
+    }
+    function reviewTask(id, decision) {
+      if (currentRole !== 'Master') return;
+      const task = appState.mgmt.aufgaben.find(t => t.id === id);
+      if (!task || task.assignee !== 'Daisy' || !['review','overdue'].includes(task.status)) return;
+      if (decision === 'extend') {
+        const deadline = prompt('Neue Deadline (JJJJ-MM-TTTHH:MM)', task.deadline || '');
+        if (!deadline) return;
+        if (!Number.isFinite(new Date(deadline).getTime()) || new Date(deadline).getTime() <= Date.now()) return showToast('Neue Deadline muss in der Zukunft liegen.', 'error');
+        task.cycle = (task.cycle || 0) + 1;
+        task.deadline = deadline;
+        task.status = 'open';
+        task.reportedAt = null;
+        (task.history ||= []).push({ event: 'Frist verlängert', at: Date.now(), deadline });
+      } else if (decision === 'accept') {
+        bookReward('task:' + task.id + ':completed', rewardAmount(task.plusPoints), 'Aufgabe erfüllt: ' + task.title);
+        task.status = 'done'; task.done = true;
+        (task.history ||= []).push({ event: 'Erfüllt bestätigt', at: Date.now() });
+      } else if (decision === 'reject') {
+        const lateKey = 'task:' + task.id + ':late:' + (task.cycle || 0);
+        if (!(appState.rewardLedger || []).some(row => row.id === lateKey)) {
+          bookReward('task:' + task.id + ':rejected:' + (task.cycle || 0), -rewardAmount(task.minusPoints), 'Nicht erfüllt: ' + task.title);
+        }
+        task.status = 'rejected'; task.done = false;
+        (task.history ||= []).push({ event: 'Endgültig nicht erfüllt', at: Date.now() });
+      } else return;
+      persistState(); refreshAllUI();
+    }
+    function renderTasks() {
+      migrateLegacyTasks();
+      const permitted = currentRole === 'Master' || hasPermission('aufgaben','visible');
+      const list = document.getElementById('task-list');
+      if (!permitted) { list.innerHTML = ''; return; }
+      const form = document.getElementById('tasks-form');
+      form.classList.toggle('hidden', currentRole !== 'Master' && !hasPermission('aufgaben','add'));
+      const assignee = document.getElementById('task-assignee');
+      if (currentRole === 'Daisy') { assignee.value = 'Master'; assignee.disabled = true; } else assignee.disabled = false;
+      updateTaskForm();
+      const labels = { open: ['Offen','text-sky-300','border-sky-800'], review: ['Zur Prüfung','text-amber-300','border-amber-800'], overdue: ['Frist überschritten','text-rose-300','border-rose-800'], done: ['Erfüllt','text-emerald-300','border-emerald-800'], rejected: ['Nicht erfüllt','text-slate-400','border-slate-700'] };
+      list.innerHTML = appState.mgmt.aufgaben.map(t => {
+        const status = taskStatus(t);
+        const style = labels[status];
+        const buttons = t.assignee === 'Master'
+          ? (currentRole === 'Master' && status !== 'done' ? '<button onclick="completeMasterTask(\'' + t.id + '\')" class="px-3 py-1 rounded-lg bg-emerald-900/40 text-emerald-200">Erledigt</button>' : '')
+          : (currentRole === 'Daisy' && ['open','overdue'].includes(status) ? '<button onclick="reportTask(\'' + t.id + '\')" class="px-3 py-1 rounded-lg bg-amber-900/40 text-amber-200">Erledigt melden</button>' : '');
+        const reviewButtons = currentRole === 'Master' && t.assignee === 'Daisy' && ['review','overdue'].includes(status)
+          ? ['accept','reject','extend'].map((d,i) => '<button onclick="reviewTask(\'' + t.id + '\',\'' + d + '\')" class="px-3 py-1 rounded-lg bg-white/10">' + ['Erfüllt','Nicht erfüllt','Frist verlängern'][i] + '</button>').join('')
+          : '';
+        const edit = currentRole === 'Master' && status === 'open' ? '<button onclick="editTask(\'' + t.id + '\')" class="px-3 py-1 rounded-lg bg-white/10">Bearbeiten</button>' : '';
+        return '<div class="rounded-xl border ' + style[2] + ' bg-white/[0.03] p-3 space-y-2"><div class="flex flex-wrap justify-between gap-2"><strong class="text-sm">' + escapeHtml(t.title) + '</strong><span class="text-xs ' + style[1] + '">' + style[0] + '</span></div><p class="text-xs text-slate-400">' + escapeHtml(t.desc || '') + '</p><div class="text-xs text-slate-400">Für: ' + escapeHtml(getDisplayName(t.assignee || 'Master')) + ' · Frist: ' + (t.deadline ? new Date(t.deadline).toLocaleString('de-DE') : 'Keine (Altbestand)') + '</div>' + (t.assignee === 'Daisy' ? '<div class="text-xs text-slate-400">+' + rewardAmount(t.plusPoints) + ' / −' + rewardAmount(t.minusPoints) + ' Punkte pro Fristversäumnis</div>' : '') + (t.reportedAt ? '<div class="text-xs text-amber-300">Gemeldet: ' + new Date(t.reportedAt).toLocaleString('de-DE') + '</div>' : '') + '<div class="flex flex-wrap gap-2 text-xs">' + buttons + reviewButtons + edit + '</div></div>';
+      }).join('') || '<p class="text-xs text-slate-400">Noch keine Aufgaben vorhanden.</p>';
+    }
+    function renderRewards() {
+      const allowed = currentRole === 'Master' || hasPermission('rewards','visible');
+      document.getElementById('rewards-balance').textContent = allowed ? rewardBalance() + ' Punkte' : '';
+      document.getElementById('reward-rule-editor').innerHTML = currentRole === 'Master'
+        ? '<div class="text-xs text-slate-300">Punkte für neue Einträge</div>' + ['kleidung','toys'].map(cat => '<label class="flex items-center justify-between gap-2 text-xs">' + (cat === 'kleidung' ? 'Neues Kleidungsstück' : 'Neues Toy') + '<input type="number" min="0" class="w-20 px-2 py-1" value="' + rewardAmount(appState.rewardRules[cat]) + '" onchange="saveRewardRule(\'' + cat + '\',this.value)"/></label>').join('')
+        : '';
+      document.getElementById('rewards-ledger').innerHTML = allowed
+        ? (appState.rewardLedger || []).slice().reverse().map(row => '<div class="flex justify-between gap-3 border-b border-slate-800 py-2 text-xs"><span>' + escapeHtml(row.description || '') + '<br><span class="text-slate-500">' + new Date(row.timestamp).toLocaleString('de-DE') + '</span></span><strong class="' + (row.amount >= 0 ? 'text-emerald-300' : 'text-rose-300') + '">' + (row.amount > 0 ? '+' : '') + row.amount + '</strong></div>').join('') || '<p class="text-xs text-slate-500">Noch keine Buchungen.</p>'
+        : '';
+    }
+    function saveRewardRule(cat, value) {
+      if (currentRole !== 'Master' || !['kleidung','toys'].includes(cat)) return;
+      appState.rewardRules[cat] = rewardAmount(value);
+      persistState(); refreshAllUI();
+    }
+    function renderDashboardRewards() {
+      const bal = rewardBalance();
+      document.getElementById('dashboard-reward-balance').textContent = (bal > 0 ? '+' : '') + bal;
+      const candidates = (appState.mgmt[bal >= 0 ? 'belohnungen' : 'strafen'] || []).filter(x => rewardAmount(x.rewardPoints) > 0 && rewardAmount(x.rewardPoints) <= Math.abs(bal)).sort((a,b) => rewardAmount(b.rewardPoints) - rewardAmount(a.rewardPoints));
+      document.getElementById('dashboard-reward-hint').textContent = candidates.length ? (bal >= 0 ? '🎁 Erreichbar: ' : '⚠️ Strafe möglich: ') + candidates[0].title + ' (' + rewardAmount(candidates[0].rewardPoints) + ' Punkte)' : (bal < 0 ? 'Noch keine passende Strafe hinterlegt' : 'Noch keine Belohnung erreichbar');
+    }
+
     function renderVerwaltung() {
       const visibleCats = MGMT_CATEGORIES.filter(cat => cat.id !== 'aufgaben' && hasPermission(cat.id, 'visible'));
       const subTabsEl = document.getElementById('verwaltung-subtabs');
