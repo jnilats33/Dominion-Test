@@ -2759,7 +2759,18 @@
       if (!Array.isArray(appState.rewardLedger)) appState.rewardLedger = [];
       if (appState.rewardLedger.some(row => row.id === key)) return false;
       appState.rewardLedger.push({ id: key, amount: Number(amount), description, timestamp: Date.now() });
+      if (currentRole) showRewardToast(Number(amount));
       return true;
+    }
+    function showRewardToast(amount) {
+      const container = document.getElementById('toast-container');
+      if (!container) return;
+      const toast = document.createElement('div');
+      const positive = amount > 0;
+      toast.className = 'px-4 py-3 rounded-xl border text-sm font-bold shadow-xl backdrop-blur-md animate-fade ' + (positive ? 'border-emerald-500/60 bg-emerald-950/95 text-emerald-200' : 'border-rose-500/60 bg-rose-950/95 text-rose-200');
+      toast.textContent = '🎯 ' + (positive ? '+' : '−') + Math.abs(amount) + ' ' + (Math.abs(amount) === 1 ? 'Punkt' : 'Punkte');
+      container.appendChild(toast);
+      setTimeout(() => { toast.style.opacity = '0'; toast.style.transition = 'opacity .25s'; setTimeout(() => toast.remove(), 260); }, 3500);
     }
     function rewardAmount(value) {
       const n = Number(value);
@@ -2917,9 +2928,7 @@
     function renderRewards() {
       const allowed = currentRole === 'Master' || hasPermission('rewards','visible');
       document.getElementById('rewards-balance').textContent = allowed ? rewardBalance() + ' Punkte' : '';
-      document.getElementById('reward-rule-editor').innerHTML = currentRole === 'Master'
-        ? '<div class="text-xs text-slate-300">Punkte für neue Einträge</div>' + ['kleidung','toys'].map(cat => '<label class="flex items-center justify-between gap-2 text-xs">' + (cat === 'kleidung' ? 'Neues Kleidungsstück' : 'Neues Toy') + '<input type="number" min="0" class="w-20 px-2 py-1" value="' + rewardAmount(appState.rewardRules[cat]) + '" onchange="saveRewardRule(\'' + cat + '\',this.value)"/></label>').join('')
-        : '';
+      document.getElementById('reward-rule-editor').innerHTML = '';
       document.getElementById('rewards-ledger').innerHTML = allowed
         ? (appState.rewardLedger || []).slice().reverse().map(row => '<div class="flex justify-between gap-3 border-b border-slate-800 py-2 text-xs"><span>' + escapeHtml(row.description || '') + '<br><span class="text-slate-500">' + new Date(row.timestamp).toLocaleString('de-DE') + '</span></span><strong class="' + (row.amount >= 0 ? 'text-emerald-300' : 'text-rose-300') + '">' + (row.amount > 0 ? '+' : '') + row.amount + '</strong></div>').join('') || '<p class="text-xs text-slate-500">Noch keine Buchungen.</p>'
         : '';
@@ -2928,6 +2937,7 @@
       if (currentRole !== 'Master' || !['kleidung','toys'].includes(cat)) return;
       appState.rewardRules[cat] = rewardAmount(value);
       persistState(); refreshAllUI();
+      showToast('Punktevergabe aktualisiert.');
     }
     function renderDashboardRewards() {
       const bal = rewardBalance();
@@ -3272,6 +3282,9 @@
       document.getElementById('perm-username-toggle').checked = !!appState.permissions.username;
 
       const tbody = document.getElementById('permissions-matrix-body');
+      const table = tbody.closest('table');
+      const header = table?.querySelector('thead tr');
+      if (header && !header.querySelector('[data-points-heading]')) header.insertAdjacentHTML('beforeend', '<th data-points-heading class="p-2 text-center text-xs" title="Punkte je neuem Eintrag von Daisy">🎯 Punkte</th>');
       tbody.innerHTML = PERMISSION_CATEGORIES.map(cat => {
         const p = appState.permissions[cat.id] || { visible: true, add: false, edit: false, delete: false };
         return `
@@ -3284,6 +3297,7 @@
                        class="w-4 h-4 accent-[#c9973e] rounded cursor-pointer" />
               </td>
             `).join('')}
+            ${['kleidung', 'toys'].includes(cat.id) ? `<td class="p-2 text-center"><input aria-label="Punkte für ${cat.label}" title="Punkte pro neuem Eintrag durch Daisy" type="number" min="0" step="1" value="${rewardAmount(appState.rewardRules?.[cat.id])}" onchange="saveRewardRule('${cat.id}',this.value)" class="w-16 max-w-full px-2 py-1.5 text-xs rounded-lg" /></td>` : '<td class="p-2 text-center text-slate-600">–</td>'}
           </tr>
         `;
       }).join('');
