@@ -1799,6 +1799,7 @@
         }
       });
 
+      processTaskDeadlines();
       renderDashboard();
       renderChat();
       renderKalender();
@@ -1967,7 +1968,7 @@
       const box = document.getElementById('dashboard-visibility-options');
       if (!box) return;
       const prefs = getDashboardVisibility();
-      box.innerHTML = DASHBOARD_VISIBLE_SECTIONS.map(entry => `
+      box.innerHTML = DASHBOARD_VISIBLE_SECTIONS.filter(entry => entry.id !== 'rewards' || currentRole === 'Master' || hasPermission('rewards','visible')).map(entry => `
         <label class="flex items-center justify-between gap-3 rounded-xl bg-white/[0.03] border border-slate-800 px-3.5 py-3 cursor-pointer">
           <span class="text-sm text-slate-200">${entry.label}</span>
           <input type="checkbox" class="w-4 h-4 accent-amber-500" onchange="setDashboardSectionVisible('${entry.id}', this.checked)" ${prefs[entry.id] !== false ? 'checked' : ''} />
@@ -1998,7 +1999,7 @@
       document.getElementById('stat-kalender').textContent = appState.kalender.length;
       document.getElementById('stat-einkauf').textContent = appState.einkauf.filter(i => !i.done).length;
       document.getElementById('stat-strafbuch').textContent = appState.strafbuch.filter(i => !i.resolved).length;
-      document.getElementById('stat-aufgaben').textContent = (appState.mgmt.aufgaben || []).filter(i => !i.done).length;
+      document.getElementById('stat-aufgaben').textContent = (appState.mgmt.aufgaben || []).filter(i => !['done','rejected'].includes(i.status)).length;
       document.getElementById('stat-toys').textContent = (appState.mgmt.toys || []).length;
       document.getElementById('stat-kleidung').textContent = (appState.mgmt.kleidung || []).length;
       document.getElementById('stat-regeln').textContent = (appState.mgmt.regeln || []).length;
@@ -3080,6 +3081,7 @@
         appState.mgmt[activeMgmtCategory] = [];
       }
       appState.mgmt[activeMgmtCategory].unshift(newItem);
+      if (currentRole === 'Daisy' && ['kleidung','toys'].includes(activeMgmtCategory)) bookReward('item:' + newItem.id, rewardAmount(appState.rewardRules[activeMgmtCategory]), 'Neuer Eintrag: ' + title);
 
       logActivity(`hat ${catObj ? catObj.singular : 'Eintrag'} hinzugefügt: „${title}“`, 'verwaltung', activeMgmtCategory, newItem.id);
 
@@ -3300,6 +3302,7 @@
       }
       appState.permissions[catId][action] = value;
       persistState();
+      refreshAllUI();
       showToast('Berechtigung aktualisiert.');
     }
 
