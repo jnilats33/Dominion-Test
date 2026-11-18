@@ -393,6 +393,13 @@
         </div>
 
         <!-- Upcoming Events Preview -->
+        <div id="dashboard-section-today" class="glass-card rounded-2xl p-5 border border-[#c9973e]/25">
+          <div class="flex flex-wrap items-center justify-between gap-2 mb-3">
+            <h3 class="font-semibold text-sm text-[#e5b55c]">☀️ Heute <span id="dash-today-date" class="text-xs text-slate-400 font-normal"></span></h3>
+            <span id="dash-today-count" class="text-[11px] text-slate-400"></span>
+          </div>
+          <div id="dash-today-items" class="space-y-2"></div>
+        </div>
         <div id="dashboard-section-events" class="glass-card rounded-2xl p-5">
           <div class="flex items-center justify-between mb-3 gap-2">
             <button type="button" id="dashboard-events-toggle" onclick="toggleDashboardSection('events')" aria-expanded="true" aria-controls="dashboard-events-content" class="flex items-center gap-2 text-left font-semibold text-sm text-slate-200 hover:text-[#e5b55c] transition">
@@ -1933,6 +1940,7 @@
       { id: 'metrics', label: 'Übersicht' },
       { id: 'feed', label: 'Aktivitäts-Stream' },
       { id: 'events', label: 'Nächste Termine' },
+      { id: 'today', label: 'Heute – Termine & Aufgaben' },
       { id: 'rewards', label: 'Punktekonto / Rewards' }
     ];
     function getDashboardVisibility() {
@@ -1989,6 +1997,7 @@
       updateDashboardMetricPermissions();
       updateDashboardVisibilityUI();
       renderDashboardRewards();
+      renderDashboardToday();
       updateDashboardMetricsUI();
       updateDashboardSectionsUI();
       document.getElementById('dash-greeting').textContent = `Hallo, ${getDisplayName(currentRole)}`;
@@ -2059,6 +2068,30 @@
           </div>
         `).join('');
       }
+    }
+
+    function renderDashboardToday() {
+      const now = new Date();
+      const localDate = [now.getFullYear(), String(now.getMonth() + 1).padStart(2, '0'), String(now.getDate()).padStart(2, '0')].join('-');
+      document.getElementById('dash-today-date').textContent = now.toLocaleDateString('de-DE', { day: '2-digit', month: 'long' });
+      const eventsAllowed = currentRole === 'Master' || hasPermission('kalender', 'visible');
+      const tasksAllowed = currentRole === 'Master' || hasPermission('aufgaben', 'visible');
+      const entries = [];
+      if (eventsAllowed) for (const ev of appState.kalender || []) {
+        if (ev.date === localDate) entries.push({ type: 'event', title: ev.title, time: ev.time || '00:00', role: getEventOwnerRole(ev), status: '' });
+      }
+      if (tasksAllowed) for (const task of (appState.mgmt?.aufgaben || [])) {
+        if (task.deadline && task.deadline.slice(0, 10) === localDate) entries.push({ type: 'task', title: task.title, time: task.deadline.slice(11, 16) || '00:00', role: task.assignee || 'Master', status: taskStatus(task) });
+      }
+      entries.sort((a,b) => a.time.localeCompare(b.time) || (a.type === 'event' ? -1 : 1));
+      document.getElementById('dash-today-count').textContent = entries.length + (entries.length === 1 ? ' Eintrag' : ' Einträge');
+      document.getElementById('dash-today-items').innerHTML = entries.map(entry => {
+        const task = entry.type === 'task';
+        const done = entry.status === 'done';
+        const statusLabel = ({ done: 'Erledigt', review: 'Zur Prüfung', overdue: 'Frist überschritten', rejected: 'Nicht erfüllt', open: 'Offen' })[entry.status] || '';
+        const statusColor = done ? 'text-emerald-300' : entry.status === 'overdue' ? 'text-rose-300' : entry.status === 'review' ? 'text-amber-300' : 'text-slate-400';
+        return '<button type="button" onclick="switchTab(\'' + (task ? 'aufgaben' : 'kalender') + '\')" class="w-full text-left p-3 rounded-xl bg-white/[0.03] hover:bg-white/[0.06] border ' + (done ? 'border-emerald-800/60' : 'border-slate-800') + ' transition"><div class="flex flex-wrap items-center gap-2"><span class="text-xs font-semibold text-[#e5b55c]">' + escapeHtml(entry.time) + '</span><span class="text-xs">' + (task ? '✅ Aufgabe' : '📅 Termin') + '</span><span class="text-sm font-medium ' + (done ? 'text-emerald-300 line-through' : 'text-slate-200') + '">' + escapeHtml(entry.title) + '</span></div><div class="flex flex-wrap gap-2 mt-1 text-[11px] text-slate-400"><span>Für: ' + escapeHtml(getDisplayName(entry.role)) + '</span>' + (task ? '<span class="' + statusColor + '">· ' + statusLabel + '</span>' : '') + '</div></button>';
+      }).join('') || '<p class="text-xs text-slate-500 py-2">Für heute sind keine Termine oder Aufgaben mit Frist eingetragen.</p>';
     }
 
     function formatAudioDuration(seconds) {
