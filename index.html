@@ -268,7 +268,7 @@
           </div>
           <p class="text-[11px] text-slate-400">Entwicklungsstand: 19.11.2026 · Testphase; Veröffentlichung in Dominion noch ausstehend</p>
           <p class="text-xs text-slate-300 leading-relaxed">
-            Neu in Dominion v2.8 (Test): Termine werden über ein übersichtliches Pop-up angelegt und bearbeitet. „Beide“ erzeugt zwei intern verknüpfte Einträge. Zeitspannen, Termine über Mitternacht und mehrtägige Zeiträume werden unterstützt. Getrennte Felder „Punkte bei Erfüllung“ und „Abzug für Nichterfüllung“ steuern die Buchung nach Masters Bestätigung (Erfüllt / Nicht erfüllt); sie erscheinen nur bei Daisy oder „Beide“. Der Papierkorb der Punktehistorie wurde repariert. Die Kalenderaktionen sind für kleine Displays optimiert; Bestätigungen erscheinen nur bei Terminen mit Punkten.
+            Neu in Dominion v2.8 (Test): Termine werden über ein übersichtliches Pop-up angelegt und bearbeitet. „Beide“ erzeugt zwei intern verknüpfte Einträge. Zeitspannen, Termine über Mitternacht und mehrtägige Zeiträume werden unterstützt. Getrennte Felder „Punkte bei Erfüllung“ und „Abzug für Nichterfüllung“ steuern die Buchung nach Masters Bestätigung (Erfüllt / Nicht erfüllt); sie erscheinen nur bei Daisy oder „Beide“. Der Papierkorb der Punktehistorie wurde repariert. Die Kalenderaktionen sind für kleine Displays optimiert; Bestätigungen erscheinen nur bei Terminen mit Punkten. Unter Einstellungen → Ansicht lässt sich die Dashboard-Reihenfolge jetzt je Rolle per Ziehen oder Pfeiltasten anpassen.
           </p>
           <details class="group border-t border-slate-800 pt-3">
             <summary class="cursor-pointer select-none flex items-center justify-between gap-2 text-xs font-semibold text-[#e5b55c] hover:text-white">
@@ -1994,15 +1994,84 @@
         if (el) el.classList.toggle('hidden', prefs[entry.id] === false || (entry.id === 'rewards' && currentRole === 'Daisy' && !hasPermission('rewards', 'visible')));
       }
     }
+    const DASHBOARD_ORDER_KEY = 'dominion_test_dashboard_order_20261119';
+    function getDashboardOrder() {
+      const defaults = DASHBOARD_VISIBLE_SECTIONS.map(x => x.id);
+      try {
+        const all = JSON.parse(localStorage.getItem(DASHBOARD_ORDER_KEY) || '{}');
+        const saved = Array.isArray(all[currentRole]) ? all[currentRole] : [];
+        return [...new Set([...saved.filter(id => defaults.includes(id)), ...defaults])];
+      } catch (err) { return defaults; }
+    }
+    function saveDashboardOrder(order) {
+      try {
+        const all = JSON.parse(localStorage.getItem(DASHBOARD_ORDER_KEY) || '{}');
+        all[currentRole] = order;
+        localStorage.setItem(DASHBOARD_ORDER_KEY, JSON.stringify(all));
+      } catch (err) { console.warn('Dashboard-Reihenfolge konnte nicht gespeichert werden:', err); }
+      applyDashboardOrder();
+      renderDashboardVisibilitySettings();
+    }
+    function moveDashboardSection(id, direction) {
+      const order = getDashboardOrder(), i = order.indexOf(id), j = i + direction;
+      if (i < 0 || j < 0 || j >= order.length) return;
+      [order[i], order[j]] = [order[j], order[i]];
+      saveDashboardOrder(order);
+    }
+    function applyDashboardOrder() {
+      const dashboard = document.getElementById('tab-dashboard');
+      if (!dashboard) return;
+      for (const id of getDashboardOrder()) {
+        const el = document.getElementById('dashboard-section-' + id);
+        if (el && el.parentElement === dashboard) dashboard.appendChild(el);
+      }
+    }
+    let dashboardDragId = null;
+    function dashboardDragStart(event, id) {
+      dashboardDragId = id;
+      event.dataTransfer.effectAllowed = 'move';
+      event.dataTransfer.setData('text/plain', id);
+    }
+    function dashboardDrop(event, target) {
+      event.preventDefault();
+      const source = dashboardDragId || event.dataTransfer.getData('text/plain');
+      dashboardDragId = null;
+      if (!source || source === target) return;
+      const order = getDashboardOrder().filter(id => id !== source);
+      order.splice(order.indexOf(target), 0, source);
+      saveDashboardOrder(order);
+    }
+    let dashboardTouchStart = null;
+    function dashboardHandlePointerDown(event, id) {
+      if (event.pointerType === 'mouse') return;
+      dashboardTouchStart = {id, x:event.clientX, y:event.clientY};
+    }
+    function dashboardHandlePointerUp(event) {
+      if (!dashboardTouchStart) return;
+      const source = dashboardTouchStart.id;
+      dashboardTouchStart = null;
+      const targetElement = document.elementFromPoint(event.clientX, event.clientY);
+      const target = targetElement && targetElement.closest('[data-dashboard-order-id]');
+      if (!target) return;
+      const dest = target.getAttribute('data-dashboard-order-id');
+      if (dest === source) return;
+      const order = getDashboardOrder().filter(id => id !== source);
+      order.splice(order.indexOf(dest), 0, source);
+      saveDashboardOrder(order);
+    }
     function renderDashboardVisibilitySettings() {
       const box = document.getElementById('dashboard-visibility-options');
       if (!box) return;
       const prefs = getDashboardVisibility();
-      box.innerHTML = DASHBOARD_VISIBLE_SECTIONS.filter(entry => entry.id !== 'rewards' || currentRole === 'Master' || hasPermission('rewards','visible')).map(entry => `
-        <label class="flex items-center justify-between gap-3 rounded-xl bg-white/[0.03] border border-slate-800 px-3.5 py-3 cursor-pointer">
-          <span class="text-sm text-slate-200">${entry.label}</span>
-          <input type="checkbox" class="w-4 h-4 accent-amber-500" onchange="setDashboardSectionVisible('${entry.id}', this.checked)" ${prefs[entry.id] !== false ? 'checked' : ''} />
-        </label>
+      const entries = getDashboardOrder().map(id => DASHBOARD_VISIBLE_SECTIONS.find(x => x.id === id)).filter(entry => entry && (entry.id !== 'rewards' || currentRole === 'Master' || hasPermission('rewards','visible')));
+      box.innerHTML = '<p class="text-xs text-slate-400 mb-2">Reihenfolge am Griff ☰ verschieben oder die Pfeile verwenden. Die Häkchen steuern weiterhin die Sichtbarkeit.</p>' + entries.map((entry, index) => `
+        <div data-dashboard-order-id="${entry.id}" draggable="true" ondragstart="dashboardDragStart(event,'${entry.id}')" ondragover="event.preventDefault()" ondrop="dashboardDrop(event,'${entry.id}')" ondragend="dashboardDragId=null" class="flex items-center gap-2 rounded-xl bg-white/[0.03] border border-slate-800 px-2.5 py-2.5">
+          <span title="Ziehen zum Sortieren" onpointerdown="dashboardHandlePointerDown(event,'${entry.id}')" onpointerup="dashboardHandlePointerUp(event)" onpointercancel="dashboardTouchStart=null" class="text-slate-400 select-none cursor-grab touch-none px-1 text-lg" aria-hidden="true">☰</span>
+          <span class="text-sm text-slate-200 flex-1 min-w-0">${entry.label}</span>
+          <button type="button" onclick="moveDashboardSection('${entry.id}',-1)" ${index===0?'disabled':''} aria-label="${entry.label} nach oben" class="px-1.5 py-1 text-slate-300 disabled:opacity-25">↑</button>
+          <button type="button" onclick="moveDashboardSection('${entry.id}',1)" ${index===entries.length-1?'disabled':''} aria-label="${entry.label} nach unten" class="px-1.5 py-1 text-slate-300 disabled:opacity-25">↓</button>
+          <input type="checkbox" aria-label="${entry.label} sichtbar" class="w-4 h-4 accent-amber-500 shrink-0" onchange="setDashboardSectionVisible('${entry.id}', this.checked)" ${prefs[entry.id] !== false ? 'checked' : ''} />
+        </div>
       `).join('');
     }
 
@@ -2017,6 +2086,7 @@
     function renderDashboard() {
       updateDashboardMetricPermissions();
       updateDashboardVisibilityUI();
+      applyDashboardOrder();
       renderDashboardRewards();
       renderDashboardToday();
       updateDashboardMetricsUI();
