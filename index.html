@@ -2059,6 +2059,7 @@
       order.splice(order.indexOf(dest), 0, source);
       saveDashboardOrder(order);
     }
+    document.addEventListener('pointerup', dashboardHandlePointerUp);
     function renderDashboardVisibilitySettings() {
       const box = document.getElementById('dashboard-visibility-options');
       if (!box) return;
@@ -2066,7 +2067,7 @@
       const entries = getDashboardOrder().map(id => DASHBOARD_VISIBLE_SECTIONS.find(x => x.id === id)).filter(entry => entry && (entry.id !== 'rewards' || currentRole === 'Master' || hasPermission('rewards','visible')));
       box.innerHTML = '<p class="text-xs text-slate-400 mb-2">Reihenfolge am Griff ☰ verschieben oder die Pfeile verwenden. Die Häkchen steuern weiterhin die Sichtbarkeit.</p>' + entries.map((entry, index) => `
         <div data-dashboard-order-id="${entry.id}" draggable="true" ondragstart="dashboardDragStart(event,'${entry.id}')" ondragover="event.preventDefault()" ondrop="dashboardDrop(event,'${entry.id}')" ondragend="dashboardDragId=null" class="flex items-center gap-2 rounded-xl bg-white/[0.03] border border-slate-800 px-2.5 py-2.5">
-          <span title="Ziehen zum Sortieren" onpointerdown="dashboardHandlePointerDown(event,'${entry.id}')" onpointerup="dashboardHandlePointerUp(event)" onpointercancel="dashboardTouchStart=null" class="text-slate-400 select-none cursor-grab touch-none px-1 text-lg" aria-hidden="true">☰</span>
+          <span title="Ziehen zum Sortieren" onpointerdown="dashboardHandlePointerDown(event,'${entry.id}')" onpointercancel="dashboardTouchStart=null" class="text-slate-400 select-none cursor-grab touch-none px-1 text-lg" aria-hidden="true">☰</span>
           <span class="text-sm text-slate-200 flex-1 min-w-0">${entry.label}</span>
           <button type="button" onclick="moveDashboardSection('${entry.id}',-1)" ${index===0?'disabled':''} aria-label="${entry.label} nach oben" class="px-1.5 py-1 text-slate-300 disabled:opacity-25">↑</button>
           <button type="button" onclick="moveDashboardSection('${entry.id}',1)" ${index===entries.length-1?'disabled':''} aria-label="${entry.label} nach unten" class="px-1.5 py-1 text-slate-300 disabled:opacity-25">↓</button>
