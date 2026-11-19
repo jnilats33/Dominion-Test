@@ -6,7 +6,7 @@
   <meta name="theme-color" content="#0f1117" />
   <meta name="apple-mobile-web-app-capable" content="yes" />
   <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
-  <title>Dominion TEST – v2.7</title>
+  <title>Dominion TEST – v2.8</title>
   <script src="https://cdn.tailwindcss.com"></script>
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
@@ -266,9 +266,9 @@
             </h3>
             <span class="text-[10px] px-2 py-0.5 rounded-full bg-[#c9973e]/15 text-[#e5b55c] border border-[#c9973e]/30">Vorschau · Testversion</span>
           </div>
-          <p class="text-[11px] text-slate-400">Entwicklungsstand: 17.11.2026 · Veröffentlichung in Dominion noch ausstehend</p>
+          <p class="text-[11px] text-slate-400">Entwicklungsstand: 19.11.2026 · Testphase; Veröffentlichung in Dominion noch ausstehend</p>
           <p class="text-xs text-slate-300 leading-relaxed">
-            Neu in Dominion v2.7: Punktwerte für Belohnungen und Strafen lassen sich direkt im Formular anlegen und bearbeiten. Master kann falsche Punktebuchungen nach Sicherheitsabfrage löschen. Daisy sieht vor dem Hinzufügen berechtigter Einträge den Punktebonus; für Master gibt es keine automatische Gutschrift. „Heute“ steht jetzt direkt unter der Übersicht. „Nächste Termine &amp; Deadlines“ zeigt Kalendertermine und offene Aufgabenfristen gemeinsam mit Rollenfilter.
+            Neu in Dominion v2.8 (Test): Termine werden über ein übersichtliches Pop-up angelegt und bearbeitet. „Beide“ erzeugt zwei intern verknüpfte Einträge. Zeitspannen, Termine über Mitternacht und mehrtägige Zeiträume werden unterstützt. Plus- oder Minuspunkte für Daisy werden erst nach Bestätigung durch Master gebucht; das Punktefeld erscheint nur bei Daisy oder „Beide“. Der Papierkorb der Punktehistorie wurde repariert.
           </p>
           <details class="group border-t border-slate-800 pt-3">
             <summary class="cursor-pointer select-none flex items-center justify-between gap-2 text-xs font-semibold text-[#e5b55c] hover:text-white">
@@ -276,6 +276,7 @@
               <span class="group-open:rotate-180 transition-transform" aria-hidden="true">▾</span>
             </summary>
             <div class="mt-3 space-y-3 text-xs text-slate-300">
+              <div class="rounded-xl bg-white/[0.03] border border-slate-800 p-3 space-y-1"><strong class="text-[#e5b55c]">Dominion v2.7 · 19.11.2026</strong><p>Punktewerte für Belohnungen und Strafen im Formular, Löschfunktion für Punktebuchungen (in v2.8 repariert), Bonus-Hinweise für Daisy, Dashboard „Heute“ und „Nächste Termine &amp; Deadlines“ mit Rollenfilter.</p></div>
               <div class="rounded-xl bg-white/[0.03] border border-slate-800 p-3 space-y-1"><strong class="text-[#e5b55c]">Dominion v2.6 · 18.11.2026</strong><p>Aufgabenverwaltung, Rewards-Punktekonto und automatische Punktevergabe, Dashboard-Bereich „Heute“, neue Statistik- und Ansichtseinstellungen.</p></div>
               <div class="rounded-xl bg-white/[0.03] border border-slate-800 p-3 space-y-1">
                 <div class="flex flex-wrap justify-between gap-1"><strong class="text-[#e5b55c]">Dominion v2.5 · Dashboard-Update</strong><span class="text-slate-500">17.11.2026</span></div>
@@ -972,7 +973,7 @@
      * DOMINION APP v2.3 - STATE, MIGRATION & FCM PUSH ENGINE
      * =========================================================================
      */
-    const APP_VERSION = '2.7';
+    const APP_VERSION = '2.8';
     const STORAGE_KEY = 'dominion_test_state_20261114';
     const LEGACY_KEYS = [];
     const DEVICE_PREFS_KEY = 'dominion_test_device_prefs_20261114';
