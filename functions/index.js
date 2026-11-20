@@ -56,7 +56,7 @@ exports.notifyTestChatV2 = onValueCreated({
     const devicesSnapshot = await getDatabase().ref(`pushDevices/${ROOM}/${recipient}`).get();
     const devices = devicesSnapshot.val() || {};
     const entries = Object.entries(devices).filter(([, v]) => typeof v?.token === 'string');
-    if (!entries.length) continue;
+    if (!entries.length) return;
     const selected = entries.slice(0, 500); // FCM multicast limit.
     const tokens = selected.map(([, v]) => v.token);
     const response = await getMessaging().sendEachForMulticast({
@@ -75,5 +75,4 @@ exports.notifyTestChatV2 = onValueCreated({
       }
     });
     await Promise.all(invalid.map(id => getDatabase().ref(`pushDevices/${ROOM}/${recipient}/${id}`).remove()));
-  }
 });
