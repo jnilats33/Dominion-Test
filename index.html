@@ -1193,26 +1193,17 @@
       }
     }
 
-    function persistChat() {
+    // Isolated test chat v2: write only the new message, never the whole history.
+    function persistChat(message) {
       saveStateLocalOnly();
-      if (firebaseDbRef && !isApplyingRemoteUpdate) {
-        firebaseDbRef.child('chat').transaction(remote => sanitizeForFirebase(mergeChatMessages(remote, appState.chat || [])), (error, committed, snapshot) => {
-          if (error || !committed) {
-            console.warn('Chat-Sync Fehler:', error || 'Transaktion abgebrochen');
-            updateSyncIndicator(false);
-            // Temporary test-only diagnostic: show the Firebase failure on mobile.
-            // Never display credentials, tokens or message contents.
-            const diagnostic = error
-              ? 'Firebase-Code: ' + (error.code || 'unbekannt') + '\nMeldung: ' + (error.message || 'Keine Details')
-              : 'Die Firebase-Transaktion wurde nicht abgeschlossen (committed=false).';
-            alert('Dominion-Test – Chat-Diagnose\n\n' + diagnostic);
-            return;
-          }
-          appState.chat = mergeChatMessages(appState.chat, snapshot.val());
-          saveStateLocalOnly();
-          if (activeTab === 'chat') renderChat();
-        }, false);
-      }
+      if (!message || !firebaseDbRef || isApplyingRemoteUpdate) return;
+      firebaseDbRef.child('chatV2').child(message.id).set(sanitizeForFirebase(message))
+        .catch(error => {
+          console.warn('Chat-v2 Sync Fehler:', error);
+          updateSyncIndicator(false);
+          alert('Dominion-Test – Chat-Diagnose\n\nFirebase-Code: ' +
+            (error.code || 'unbekannt') + '\nMeldung: ' + (error.message || 'Keine Details'));
+        });
     }
 
     function mergeChatMessages(localMessages, remoteMessages) {
@@ -1469,7 +1460,7 @@
     function updateAuthenticatedFirebaseSync() {
       const verified = !!testAuthUser && ['Master', 'Daisy'].includes(testAuthRole);
       if (!verified) {
-        if (firebaseDbRef) firebaseDbRef.off();
+        if (firebaseDbRef) { firebaseDbRef.off(); firebaseDbRef.child('chatV2').off(); }
         firebaseDbRef = null;
         updateSyncIndicator(false);
         return;
@@ -1480,8 +1471,22 @@
     function attachFirebaseListener(safeRoomPath) {
       if (firebaseDbRef) {
         firebaseDbRef.off();
+        firebaseDbRef.child('chatV2').off();
       }
       firebaseDbRef = firebase.database().ref('rooms/' + safeRoomPath);
+      appState.chat = []; // Previous chat was disposable test data.
+      saveStateLocalOnly();
+      firebaseDbRef.child('chatV2').on('child_added', snapshot => {
+        const message = snapshot.val();
+        if (!message || !message.id) return;
+        appState.chat = mergeChatMessages(appState.chat, [message]);
+        saveStateLocalOnly();
+        if (activeTab === 'chat') renderChat();
+        badgeRefresh();
+      }, error => {
+        console.warn('Chat-v2 Listener Fehler:', error);
+        updateSyncIndicator(false);
+      });
 
       firebaseDbRef.on('value', (snapshot) => {
         updateSyncIndicator(true);
@@ -1494,17 +1499,14 @@
           return;
         }
 
-        let mergedChat = [];
-        let chatNeedsSync = false;
         isApplyingRemoteUpdate = true;
         try {
-          const localChatBackup = Array.isArray(appState.chat) ? [...appState.chat] : [];
-          appState = mergeWithDefaults(remoteData);
+          const liveChat = appState.chat || [];
+          // Do not import old /chat or /chatV2 into shared app state.
+          const { chat: ignoredOldChat, chatV2: ignoredChatV2, ...stateWithoutChats } = remoteData;
+          appState = mergeWithDefaults(stateWithoutChats);
           delete appState.fcmToken;
-          const remoteChat = Array.isArray(appState.chat) ? appState.chat : [];
-          mergedChat = mergeChatMessages(localChatBackup, remoteChat);
-          chatNeedsSync = JSON.stringify(mergedChat) !== JSON.stringify(remoteChat);
-          appState.chat = mergedChat;
+          appState.chat = liveChat;
           saveStateLocalOnly();
           refreshAllUI();
         } catch (err) {
@@ -1513,9 +1515,6 @@
           return;
         } finally {
           isApplyingRemoteUpdate = false;
-        }
-        if (chatNeedsSync) {
-          persistChat();
         }
       }, (error) => {
         console.warn('Firebase Listener Error:', error);
@@ -2485,7 +2484,7 @@
                 duration: duration,
                 timestamp: Date.now()
               });
-              persistChat();
+              persistChat(appState.chat[appState.chat.length - 1]);
               renderChat();
               scrollChatToBottom();
             };
@@ -2540,7 +2539,7 @@
 
       input.value = '';
       clearChatAttachment();
-      persistChat();
+      persistChat(appState.chat[appState.chat.length - 1]);
       renderChat();
       scrollChatToBottom();
     }
