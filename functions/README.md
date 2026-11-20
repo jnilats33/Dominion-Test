@@ -1,24 +1,19 @@
-# Dominion-Test Push – sichere Vorbereitungsstufe
+# Dominion-Test Push – Stand nach Chat-v2-Umstellung
 
-**Noch nicht deployen.** Die Dateien sind ein Backend-Entwurf, keine aktive Push-Funktion.
+Die bisher bereitgestellte Funktion `notifyTestChat` überwacht den alten Pfad `/rooms/dominion-test-20261114-isolated/chat`.
 
-## Vorbedingungen
-1. Firebase Authentication einrichten; Master und Daisy benötigen jeweils eigene Auth-Konten.
-2. Rollen durch vertrauenswürdige Admin-Seite als Firebase Auth Custom Claims `dominionTestRole` setzen. Ein Rollenknopf in der Web-App ist **kein** Authentifizierungsnachweis.
-3. Firebase App Check für die Web-App einrichten und die Callable Function testen.
-4. Realtime Database Rules: Schreib-/Lesezugriff auf `pushDevices` für alle Clients **verweigern**. Cloud Functions Admin SDK darf weiterhin zugreifen.
-5. Client um Firebase Auth und Functions SDK ergänzen; nach erfolgreicher Anmeldung das bereits vorhandene FCM-Token mit stabiler gerätebezogener ID an `registerTestPushDevice` senden. Bis dahin liegen Tokens ausschließlich lokal auf dem Gerät.
-6. Vor Deployment RTDB-Instanzname, Region, Firebase CLI Login, Functions-Runtime, Security Rules und Kostenlimits prüfen. Das Projekt wird mit der Produktiv-App geteilt.
-7. Zunächst nur synthetische Chatnachrichten im Testraum verwenden.
+Die neue Funktion `notifyTestChatV2` ist im Quellcode vorbereitet und überwacht ausschließlich neu angelegte Nachrichten unter `/rooms/dominion-test-20261114-isolated/chatV2/{messageId}`. Sie wurde durch den GitHub-Commit **nicht** bereitgestellt.
 
-## Architektur
-- `registerTestPushDevice`: authentifizierte, App-Check-geschützte Token-Registrierung pro Rolle/Gerät.
-- `notifyTestChat`: RTDB-Trigger **nur** für `rooms/dominion-test-20261114-isolated/chat`; sendet an die andere Rolle.
-- Kein FCM Server Key und kein Service-Account-Key im öffentlichen Repository.
-- Die vorhandene Chat-Array-Struktur wird vorerst nur gelesen; Migration zu einzelnen Chat-Knoten wäre langfristig besser.
+## Sicheres Vorgehen
+1. Vor dem Deployment aktives Firebase-Projekt `dominionapp-45bfa`, RTDB-Instanz `dominionapp-45bfa-default-rtdb` und Region `europe-west1` prüfen.
+2. In der Firebase Console prüfen, ob Master und Daisy über `registerTestPushDevice` jeweils registriert sind. Keine Push-Tokens öffentlich teilen.
+3. Ausschließlich die neue Funktion bereitstellen: `firebase deploy --only functions:notifyTestChatV2 --project dominionapp-45bfa`.
+4. Erst mit einer neuen Textnachricht im isolierten Testraum testen. Logs und Empfang auf dem Zielgerät kontrollieren.
+5. Die alte Funktion `notifyTestChat` erst nach erfolgreicher Prüfung gesondert stilllegen. Keine pauschale Bereitstellung aller Functions durchführen.
 
-## Wichtige Einschränkungen
-- Noch kein automatischer Push, bis die Vorbedingungen erfüllt und die Functions bereitgestellt sind.
-- Für RTDB-Trigger muss die richtige Datenbankinstanz und Region vor Deployment bestätigt werden.
-- Bei RTDB-Triggern ist die Zustellung mindestens einmal möglich; Duplikate sollten vor dem Produktiveinsatz durch Event-ID-Deduplizierung ausgeschlossen werden.
-- Budgetwarnungen sind keine harte Kostenobergrenze.
+## Grenzen
+- Das Firebase-Projekt wird mit Produktiv geteilt; Deployments verändern Cloud-Ressourcen dieses Projekts.
+- Das Bereitstellen eines neuen RTDB-Triggers kann Berechtigungen, aktivierte APIs und Abrechnung voraussetzen.
+- FCM-Zustellung setzt erfolgreiche Token-Registrierung und Browser-Berechtigung voraus.
+- Realtime-Database-Trigger können mehrfach zugestellt werden. Für Produktion ist eine Deduplizierung notwendig.
+- Alte Chatnachrichten werden nicht migriert oder gelöscht.
