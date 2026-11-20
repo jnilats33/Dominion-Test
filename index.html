@@ -1200,6 +1200,12 @@
           if (error || !committed) {
             console.warn('Chat-Sync Fehler:', error || 'Transaktion abgebrochen');
             updateSyncIndicator(false);
+            // Temporary test-only diagnostic: show the Firebase failure on mobile.
+            // Never display credentials, tokens or message contents.
+            const diagnostic = error
+              ? 'Firebase-Code: ' + (error.code || 'unbekannt') + '\nMeldung: ' + (error.message || 'Keine Details')
+              : 'Die Firebase-Transaktion wurde nicht abgeschlossen (committed=false).';
+            alert('Dominion-Test – Chat-Diagnose\n\n' + diagnostic);
             return;
           }
           appState.chat = mergeChatMessages(appState.chat, snapshot.val());
