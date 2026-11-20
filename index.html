@@ -1766,6 +1766,76 @@
       return !!catPerm[action];
     }
 
+    // Local, role-specific read receipts: never written to Firebase room data.
+    const MENU_BADGE_KEY = 'dominion_test_menu_badges_v1';
+    let menuNewHighlights = {chat:new Set(), kalender:new Set(), aufgaben:new Set()};
+    let menuLastRole = null;
+    function badgeItems(tab) {
+      if (tab === 'chat') return (appState.chat || []).filter(x => x && x.id && x.sender !== currentRole);
+      if (tab === 'kalender') return (appState.kalender || []).filter(x => x && x.id && getEventOwnerRole(x) === currentRole && x.createdBy && x.createdBy !== currentRole);
+      if (tab === 'aufgaben') return ((appState.mgmt || {}).aufgaben || []).filter(x => x && x.id && x.assignee === currentRole && x.createdBy && x.createdBy !== currentRole);
+      return [];
+    }
+    function badgeStore() {
+      try { return JSON.parse(localStorage.getItem(MENU_BADGE_KEY) || '{}') || {}; }
+      catch (e) { return {}; }
+    }
+    function badgeSeen(tab) {
+      const all = badgeStore(), role = all[currentRole] || {};
+      return Array.isArray(role[tab]) ? role[tab] : null;
+    }
+    function badgeSave(tab, ids) {
+      try {
+        const all = badgeStore();
+        if (!all[currentRole]) all[currentRole] = {};
+        all[currentRole][tab] = [...new Set(ids)];
+        localStorage.setItem(MENU_BADGE_KEY, JSON.stringify(all));
+      } catch(e) { console.warn('Menü-Lesestand konnte nicht gespeichert werden:',e); }
+    }
+    function badgeNewIds(tab) {
+      const items = badgeItems(tab), saved = badgeSeen(tab);
+      if (saved === null) {
+        // Existing content is the baseline; only subsequent additions count as new.
+        badgeSave(tab, items.map(x => String(x.id)));
+        return [];
+      }
+      const seen = new Set(saved);
+      return items.filter(x => !seen.has(String(x.id))).map(x => String(x.id));
+    }
+    function badgeEnter(tab) {
+      const ids = badgeNewIds(tab);
+      menuNewHighlights[tab] = new Set(ids);
+      badgeSave(tab, badgeItems(tab).map(x => String(x.id)));
+    }
+    function badgeRefresh() {
+      if (!currentRole) return;
+      if (menuLastRole !== currentRole) {
+        menuLastRole = currentRole;
+        menuNewHighlights = {chat:new Set(), kalender:new Set(), aufgaben:new Set()};
+      }
+      for (const tab of ['chat','kalender','aufgaben']) {
+        let ids = badgeNewIds(tab);
+        if (activeTab === tab && ids.length) {
+          for (const id of ids) menuNewHighlights[tab].add(id);
+          badgeSave(tab, badgeItems(tab).map(x => String(x.id)));
+          ids = [];
+        }
+        const button = document.querySelector('.nav-btn[data-tab="' + tab + '"]');
+        if (!button) continue;
+        let badge = button.querySelector('.dominion-menu-count');
+        if (!badge) {
+          badge = document.createElement('span');
+          badge.className = 'dominion-menu-count absolute top-0 right-0 min-w-[17px] h-[17px] px-1 rounded-full bg-rose-600 text-white text-[10px] leading-[17px] text-center font-bold shadow pointer-events-none hidden';
+          button.appendChild(badge);
+        }
+        badge.textContent = ids.length > 99 ? '99+' : String(ids.length);
+        badge.classList.toggle('hidden', ids.length === 0);
+      }
+    }
+    function badgeMark(tab, id) {
+      return menuNewHighlights[tab] && menuNewHighlights[tab].has(String(id))
+        ? '<span class="inline-flex items-center rounded bg-sky-500/20 text-sky-200 border border-sky-500/40 px-1.5 py-0.5 text-[9px] font-bold ml-2">NEU</span>' : '';
+    }
     function switchTab(tabId) {
       if (currentRole === 'Daisy' && ['kalender', 'einkauf', 'strafbuch'].includes(tabId)) {
         if (!hasPermission(tabId, 'visible')) {
@@ -1774,7 +1844,9 @@
         }
       }
 
+      if (activeTab !== tabId && menuNewHighlights[activeTab]) menuNewHighlights[activeTab].clear();
       activeTab = tabId;
+      if (menuNewHighlights[tabId]) badgeEnter(tabId);
 
       const allTabs = ['dashboard', 'chat', 'kalender', 'einkauf', 'strafbuch', 'aufgaben', 'rewards', 'verwaltung', 'einstellungen'];
       allTabs.forEach(t => {
@@ -1838,6 +1910,7 @@
       renderTasks();
       renderRewards();
       renderEinstellungen();
+      badgeRefresh();
     }
 
     // Dashboard layout is a per-browser preference, not shared room data.
@@ -2266,7 +2339,7 @@
 
         return `
           <div class="flex flex-col ${isMine ? 'items-end' : 'items-start'}">
-            <span class="text-[10px] text-slate-400 mb-1 px-1">${escapeHtml(senderDisplay)} • ${timeStr}</span>
+            <span class="text-[10px] text-slate-400 mb-1 px-1">${escapeHtml(senderDisplay)} • ${timeStr}${badgeMark("chat",msg.id)}</span>
             <div class="max-w-[82%] sm:max-w-[70%] rounded-2xl px-3.5 py-2.5 text-sm shadow ${
               isMine
                 ? 'gold-gradient text-[#0f1117] font-medium rounded-br-sm'
@@ -2649,7 +2722,7 @@
                 <span class="text-[10px] font-semibold px-2 py-0.5 rounded-md border ${pillClass}">
                   ${isMasterEv ? '♛' : '🌸'} ${escapeHtml(ownerName)}
                 </span>
-                <span class="font-semibold text-sm text-white">${escapeHtml(ev.title)}</span>
+                <span class="font-semibold text-sm text-white">${escapeHtml(ev.title)}${badgeMark("kalender",ev.id)}</span>
               </div>
               <div class="text-xs text-slate-400 mt-1">📅 ${calendarRangeLabel(ev)}</div>${ownerRole === 'Daisy' && ((ev.pointsPlus != null ? Number(ev.pointsPlus) : Math.max(0, Number(ev.points || 0))) || (ev.pointsMinus != null ? Number(ev.pointsMinus) : Math.max(0,-Number(ev.points || 0)))) ? `<div class="text-xs mt-1 ${ev.confirmed ? 'text-emerald-300' : 'text-amber-300'}">${ev.confirmed ? ('✓ ' + (ev.confirmOutcome === 'unfulfilled' ? 'Nicht erfüllt' : 'Erfüllt')) : '⏳ Vorgemerkt'}: +${ev.pointsPlus != null ? ev.pointsPlus : Math.max(0,Number(ev.points || 0))} / −${ev.pointsMinus != null ? ev.pointsMinus : Math.max(0,-Number(ev.points || 0))} Punkte</div>` : ''}
             </div>
@@ -3100,7 +3173,7 @@
       if (editingTaskId && (!task || currentRole !== 'Master' || task.status !== 'open')) return;
       const values = { title, desc, assignee, deadline, taskKind: kind, plusPoints: kind === 'reward' ? rewardAmount(document.getElementById('task-plus').value) : 0, minusPoints: kind === 'reward' ? rewardAmount(document.getElementById('task-minus').value) : 0 };
       if (task) Object.assign(task, values);
-      else tasks.unshift({ id: 'task-' + Date.now() + '-' + Math.random().toString(36).slice(2, 7), taskV26: true, status: 'open', cycle: 0, history: [], done: false, ...values });
+      else tasks.unshift({ id: 'task-' + Date.now() + '-' + Math.random().toString(36).slice(2, 7), taskV26: true, status: 'open', cycle: 0, history: [], done: false, createdBy: currentRole, ...values });
       logActivity('hat Aufgabe angelegt/bearbeitet: „' + title + '“', 'aufgaben');
       resetTaskForm(); persistState(); refreshAllUI(); showToast('Aufgabe gespeichert.');
     }
@@ -3185,7 +3258,7 @@
           ? ['accept','reject','extend'].map((d,i) => '<button onclick="reviewTask(\'' + t.id + '\',\'' + d + '\')" class="px-3 py-1 rounded-lg bg-white/10">' + ['Erfüllt','Nicht erfüllt','Frist verlängern'][i] + '</button>').join('')
           : '';
         const edit = currentRole === 'Master' && status === 'open' ? '<button onclick="editTask(\'' + t.id + '\')" class="px-3 py-1 rounded-lg bg-white/10">Bearbeiten</button>' : '';
-        return '<div class="rounded-xl border ' + style[2] + ' bg-white/[0.03] p-3 space-y-2"><div class="flex flex-wrap justify-between gap-2"><strong class="text-sm">' + escapeHtml(t.title) + '</strong><span class="text-xs ' + style[1] + '">' + style[0] + '</span></div><p class="text-xs text-slate-400">' + escapeHtml(t.desc || '') + '</p><div class="text-xs text-slate-400">Für: ' + escapeHtml(getDisplayName(t.assignee || 'Master')) + ' · Frist: ' + (t.deadline ? new Date(t.deadline).toLocaleString('de-DE') : 'Keine (Altbestand)') + '</div>' + (t.assignee === 'Daisy' ? '<div class="text-xs text-slate-400">+' + rewardAmount(t.plusPoints) + ' / −' + rewardAmount(t.minusPoints) + ' Punkte pro Fristversäumnis</div>' : '') + (t.reportedAt ? '<div class="text-xs text-amber-300">Gemeldet: ' + new Date(t.reportedAt).toLocaleString('de-DE') + '</div>' : '') + '<div class="flex flex-wrap gap-2 text-xs">' + buttons + reviewButtons + edit + '</div></div>';
+        return '<div class="rounded-xl border ' + style[2] + ' bg-white/[0.03] p-3 space-y-2"><div class="flex flex-wrap justify-between gap-2"><strong class="text-sm">' + escapeHtml(t.title) + '</strong>' + badgeMark("aufgaben",t.id) + '<span class="text-xs ' + style[1] + '">' + style[0] + '</span></div><p class="text-xs text-slate-400">' + escapeHtml(t.desc || '') + '</p><div class="text-xs text-slate-400">Für: ' + escapeHtml(getDisplayName(t.assignee || 'Master')) + ' · Frist: ' + (t.deadline ? new Date(t.deadline).toLocaleString('de-DE') : 'Keine (Altbestand)') + '</div>' + (t.assignee === 'Daisy' ? '<div class="text-xs text-slate-400">+' + rewardAmount(t.plusPoints) + ' / −' + rewardAmount(t.minusPoints) + ' Punkte pro Fristversäumnis</div>' : '') + (t.reportedAt ? '<div class="text-xs text-amber-300">Gemeldet: ' + new Date(t.reportedAt).toLocaleString('de-DE') + '</div>' : '') + '<div class="flex flex-wrap gap-2 text-xs">' + buttons + reviewButtons + edit + '</div></div>';
       }).join('') || '<p class="text-xs text-slate-400">Noch keine Aufgaben vorhanden.</p>';
     }
     function renderRewards() {
