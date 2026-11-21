@@ -1442,6 +1442,14 @@
           const actual = liveMgmt[category] || [], expected = expectedMgmt[category] || [];
           lines.push(category+': '+actual.length+' / '+expected.length+' / '+sameRemoteValue(actual,expected));
         }
+        // Display-only normalization mirrors mergeWithDefaults; never writes.
+        const normalized = mergeWithDefaults(sanitizeForFirebase(live));
+        lines.push('--- Nach lokaler Nummerierung (nur Vergleich) ---');
+        lines.push('Verwaltung gleich: '+sameRemoteValue(normalized.mgmt,expectedMgmt));
+        lines.push('Zähler gleich: '+sameRemoteValue(normalized.mgmtCounters,expectedCounters));
+        for (const category of categories) {
+          lines.push(category+': '+sameRemoteValue(normalized.mgmt[category],expectedMgmt[category]));
+        }
         lines.push('--- Zähler: Server / Erwartet ---');
         for (const category of categories) {
           lines.push(category+': '+String(liveCounters[category]??'fehlt')+' / '+String(expectedCounters[category]??'fehlt'));
