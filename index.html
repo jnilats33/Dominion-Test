@@ -1367,11 +1367,92 @@
       close.textContent = 'Schließen (keine Änderungen)';
       close.addEventListener('click',()=>backdrop.remove());
       panel.appendChild(close);
+      if (recoveryCandidate()) {
+        const recover = document.createElement('button');
+        recover.type = 'button';
+        recover.className = 'ml-2 mt-2 px-4 py-2 rounded-lg border border-amber-500 text-amber-200 text-sm';
+        recover.textContent = 'Nur Strafe „Test“ wiederherstellen';
+        recover.addEventListener('click', () => { backdrop.remove(); recoverSingleTestPunishment(); });
+        panel.appendChild(recover);
+      }
       backdrop.appendChild(panel);
       document.getElementById('sync-conflict-review-overlay')?.remove();
       document.body.appendChild(backdrop);
     }
 
+    // Explicit, one-record recovery for the isolated test room. No automatic
+    // conflict resolution and no wholesale replacement of the mgmt collection.
+    let recoveryPending = false;
+    function recoveryCandidate() {
+      if (!productionSyncConflict || !lastRemoteState || !firebaseDbRef ||
+          !testAuthUser || testAuthRole !== 'Master' || currentRole !== 'Master' ||
+          location.hostname !== 'jnilats33.github.io' ||
+          !location.pathname.startsWith('/Dominion-Test/') ||
+          firebaseRoomPathPending !== DEVELOPMENT_TEST_ROOM ||
+          pendingCollectionWrites.size || recoveryPending) return null;
+      const review = buildSyncConflictReview();
+      if (review.status !== 'ready') return null;
+      const mgmt = review.collections.find(entry => entry.key === 'mgmt');
+      const counter = review.collections.find(entry => entry.key === 'mgmtCounters');
+      if (!mgmt || !counter) return null;
+      if (review.collections.some(entry => !['mgmt','mgmtCounters'].includes(entry.key) && !entry.matchesServer)) return null;
+      const local = mgmt.local, remote = mgmt.server;
+      if (!local || !remote || !Array.isArray(local.strafen) || !Array.isArray(remote.strafen)) return null;
+      for (const category of MGMT_CATEGORIES.map(c => c.id).filter(c => c !== 'strafen')) {
+        if (!sameRemoteValue(local[category],remote[category])) return null;
+      }
+      const remoteIds = new Set(remote.strafen.map(item => item.id));
+      const additions = local.strafen.filter(item => !remoteIds.has(item.id));
+      if (additions.length !== 1 || additions[0].title !== 'Test' ||
+          additions[0].id !== 'mgmt-1795301411644-3lb1t') return null;
+      const existingLocal = local.strafen.filter(item => remoteIds.has(item.id));
+      if (!sameRemoteValue(existingLocal,remote.strafen)) return null;
+      const localCounters = counter.local || {}, remoteCounters = counter.server || {};
+      for (const key of MGMT_CATEGORIES.map(c=>c.id).filter(c=>c!=='strafen')) {
+        if (!sameRemoteValue(localCounters[key],remoteCounters[key])) return null;
+      }
+      if (Number(localCounters.strafen) !== Number(remoteCounters.strafen)+1 ||
+          additions[0].itemNumber !== 'S-'+String(localCounters.strafen).padStart(4,'0')) return null;
+      return {item:sanitizeForFirebase(additions[0]),remoteMgmt:sanitizeForFirebase(remote),
+        remoteCounters:sanitizeForFirebase(remoteCounters)};
+    }
+    function recoverSingleTestPunishment() {
+      const candidate = recoveryCandidate();
+      if (!candidate) {
+        showToast('Wiederherstellung gesperrt: Datenstand oder Berechtigung nicht eindeutig.', 'error');
+        return;
+      }
+      if (!confirm('Nur die lokale Strafe „Test“ (S-0005) in den isolierten Testraum übernehmen? Der gesamte Serverstand wird vor dem Schreiben erneut geprüft.')) return;
+      recoveryPending = true;
+      const ref = firebaseDbRef;
+      ref.transaction(current => {
+        if (!current || !sameRemoteValue(current.mgmt,candidate.remoteMgmt) ||
+            !sameRemoteValue(current.mgmtCounters,candidate.remoteCounters)) return;
+        const currentItems = current.mgmt.strafen || [];
+        if (currentItems.some(item=>item.id===candidate.item.id)) return;
+        const next = sanitizeForFirebase(current);
+        next.mgmt.strafen = [candidate.item,...currentItems];
+        next.mgmtCounters = {...(current.mgmtCounters||{}),
+          strafen:Number(candidate.remoteCounters.strafen)+1};
+        return next;
+      }, (error,committed,snapshot) => {
+        recoveryPending = false;
+        if (error || !committed) {
+          showToast('Keine Wiederherstellung: Serveränderung oder Firebase-Fehler. Konfliktentwurf bleibt gesichert.', 'error');
+          return;
+        }
+        // Verify the transaction result before removing any recovery material.
+        const live = snapshot && snapshot.val();
+        if (!live || !(live.mgmt?.strafen||[]).some(item=>sameRemoteValue(item,candidate.item))) {
+          showToast('Schreibbestätigung unklar. Konfliktentwurf bleibt gesichert.', 'error');
+          return;
+        }
+        // Leave the lock and backup in place until all draft collections have
+        // been independently checked; no implicit release or deletion.
+        showToast('Strafe auf Server wiederhergestellt. Sicherung und Sperre bleiben vorerst erhalten.');
+        openSyncConflictReview();
+      }, false);
+    }
     // Firebase represents empty arrays as null. Compare equivalent empty values
     // without treating them as a user edit.
     // Canonical structural comparison: Firebase may reorder object keys and
