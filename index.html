@@ -1371,8 +1371,8 @@
         const recover = document.createElement('button');
         recover.type = 'button';
         recover.className = 'ml-2 mt-2 px-4 py-2 rounded-lg border border-amber-500 text-amber-200 text-sm';
-        recover.textContent = 'Nur Strafe „Test“ wiederherstellen';
-        recover.addEventListener('click', () => { backdrop.remove(); recoverSingleTestPunishment(); });
+        recover.textContent = 'Serververgleich prüfen (nur lesen)';
+        recover.addEventListener('click', () => { backdrop.remove(); diagnoseTestRecovery(); });
         panel.appendChild(recover);
       }
       backdrop.appendChild(panel);
@@ -1415,6 +1415,29 @@
           additions[0].itemNumber !== 'S-'+String(localCounters.strafen).padStart(4,'0')) return null;
       return {item:sanitizeForFirebase(additions[0]),remoteMgmt:sanitizeForFirebase(remote),
         remoteCounters:sanitizeForFirebase(remoteCounters)};
+    }
+    async function diagnoseTestRecovery() {
+      const candidate = recoveryCandidate();
+      if (!candidate) {
+        alert('Diagnose nicht möglich: Lokaler Entwurf, Master-Anmeldung oder Server-Snapshot fehlt.');
+        return;
+      }
+      try {
+        const snap = await firebaseDbRef.once('value');
+        const live = snap.val();
+        const checks = [
+          ['Verwaltung gesamt',sameRemoteValue(live?.mgmt,candidate.remoteMgmt)],
+          ['Strafenliste',sameRemoteValue(live?.mgmt?.strafen,candidate.remoteMgmt.strafen)],
+          ['Zähler gesamt',sameRemoteValue(live?.mgmtCounters,candidate.remoteCounters)],
+          ['Strafenzähler',sameRemoteValue(live?.mgmtCounters?.strafen,candidate.remoteCounters.strafen)],
+          ['Eintrag existiert bereits',!!(live?.mgmt?.strafen||[]).some(item=>item.id===candidate.item.id)]
+        ];
+        const details = checks.map(([label,ok])=>label+': '+(ok?'JA':'NEIN')).join('\\n');
+        alert('Nur-Lese-Diagnose – es wurde nichts geschrieben.\\n\\n'+details+
+          '\\n\\nBitte Screenshot senden. Konfliktsperre bleibt aktiv.');
+      } catch (error) {
+        alert('Nur-Lese-Diagnose fehlgeschlagen: '+(error.code||'')+' '+(error.message||String(error)));
+      }
     }
     function recoverSingleTestPunishment() {
       const candidate = recoveryCandidate();
