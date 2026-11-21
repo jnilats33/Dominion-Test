@@ -3303,6 +3303,7 @@
               <span class="font-semibold text-sm text-white">${escapeHtml(entry.reason)}</span>
             </div>
             <p class="text-xs text-slate-400 mt-1">Auflage: ${escapeHtml(entry.measure)}</p>
+            ${entry.redemptionId && entry.completedAt ? `<p class="text-xs text-slate-400 mt-1">Eingelöst: ${new Date(entry.createdAt).toLocaleDateString('de-DE')} · Erfüllt: ${new Date(entry.completedAt).toLocaleDateString('de-DE')}</p>` : ''}
           </div>
           <div class="flex items-center gap-1.5">
             ${canEdit ? `<button onclick="togglePenaltyResolved('${entry.id}')" class="px-2.5 py-1.5 rounded-lg bg-white/5 hover:bg-white/10 text-xs text-slate-200">${entry.resolved ? 'Öffnen' : '✓ Erledigt'}</button>` : ''}
