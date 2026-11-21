@@ -3644,9 +3644,9 @@
           const cost = rewardAmount(item.rewardPoints);
           const count = redemptionSelection[id] || 0;
           const disabled = cost > remaining || redemptionPending;
-          return '<div class="rounded-xl border p-3 space-y-2 ' + (disabled && !count ? 'opacity-40 border-slate-800' : 'border-slate-700') + '">' +
+          return '<div class="rounded-xl border p-3 space-y-2 ' + (count ? 'border-amber-400/90 bg-amber-500/15 ring-1 ring-amber-400/40 shadow-lg shadow-amber-950/20' : disabled ? 'opacity-40 border-slate-800 bg-slate-900/30' : 'border-slate-700 bg-white/[0.02]') + '">' +
             '<div class="flex justify-between gap-2"><strong class="text-sm">' + escapeHtml(item.title || '') + '</strong>' +
-            (count ? '<span class="text-amber-300 text-xs">' + count + '×</span>' : '') + '</div>' +
+            (count ? '<span class="shrink-0 rounded-full border border-amber-400/50 bg-amber-400/20 px-2 py-1 text-amber-100 text-[11px] font-semibold">✓ Ausgewählt · ' + count + '×</span>' : '') + '</div>' +
             '<div class="text-xs text-slate-400">' + cost + ' Punkte</div>' +
             '<div class="flex gap-2">' +
             '<button class="px-3 py-1 rounded bg-white/10 disabled:opacity-30" ' + (!count || redemptionPending ? 'disabled' : '') + ' onclick="changeRedemptionSelection(' + JSON.stringify(id).replace(/"/g,'&quot;') + ',-1)">−</button>' +
