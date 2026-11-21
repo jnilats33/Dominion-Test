@@ -1374,10 +1374,23 @@
 
     // Firebase represents empty arrays as null. Compare equivalent empty values
     // without treating them as a user edit.
+    // Canonical structural comparison: Firebase may reorder object keys and
+    // represents empty arrays as null. Arrays with content retain their order.
+    function canonicalRemoteValue(value) {
+      if (value == null || (Array.isArray(value) && value.length === 0)) return null;
+      if (Array.isArray(value)) return value.map(canonicalRemoteValue);
+      if (typeof value === 'object') {
+        const result = {};
+        for (const key of Object.keys(value).sort()) {
+          if (value[key] !== undefined) result[key] = canonicalRemoteValue(value[key]);
+        }
+        return result;
+      }
+      return value;
+    }
     function sameRemoteValue(a, b) {
-      const normalize = value => value == null ? null :
-        Array.isArray(value) && value.length === 0 ? null : value;
-      return JSON.stringify(normalize(a)) === JSON.stringify(normalize(b));
+      return JSON.stringify(canonicalRemoteValue(a)) ===
+        JSON.stringify(canonicalRemoteValue(b));
     }
 
     // Queue each collection's writes; never launch two transactions against
