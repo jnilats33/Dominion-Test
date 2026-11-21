@@ -869,6 +869,16 @@
               <div id="development-import-preview" class="text-xs text-slate-300"></div>
               <button type="button" onclick="importDevelopmentFixtures()" id="development-import-button"
                 class="px-4 py-2 rounded-xl gold-gradient text-xs font-semibold disabled:opacity-40">Testdaten laden</button>
+              <div class="border-t border-slate-700 pt-4 mt-3 space-y-2">
+                <h4 class="text-sm font-semibold text-white">🎯 Test-Punktestand</h4>
+                <p class="text-xs text-slate-400">Setzt den Gesamtpunktestand über eine zusätzliche Testbuchung auf einen definierten Wert. Bestehende Buchungen bleiben erhalten.</p>
+                <div id="development-balance-current" class="text-xs text-slate-300"></div>
+                <div class="flex flex-wrap gap-2">
+                  <button type="button" data-development-balance onclick="setDevelopmentBalance(100)" class="px-3 py-2 rounded-lg bg-emerald-500/20 text-emerald-200 text-xs disabled:opacity-40">+100 Punkte</button>
+                  <button type="button" data-development-balance onclick="setDevelopmentBalance(-80)" class="px-3 py-2 rounded-lg bg-rose-500/20 text-rose-200 text-xs disabled:opacity-40">−80 Punkte</button>
+                  <button type="button" data-development-balance onclick="setDevelopmentBalance(0)" class="px-3 py-2 rounded-lg bg-white/10 text-slate-200 text-xs disabled:opacity-40">0 Punkte</button>
+                </div>
+              </div>
             </div>
           </div>
           <div id="settings-panel-sicherheit" class="hidden space-y-5">
@@ -4062,6 +4072,52 @@
         ? 'Vorschau: 4 Belohnungen, 4 Strafen, 2 Aufgaben und 3 Termine. Vorhandene Einträge bleiben bestehen; gleiche Test-IDs werden übersprungen. Keine Punktegutschrift beim Import.'
         : 'Import gesperrt. Erforderlich: Dominion-Test, isolierter Testraum und Firebase-Anmeldung als Master.';
       button.disabled = !allowed || developmentImportPending;
+      const balanceLabel = document.getElementById('development-balance-current');
+      if (balanceLabel) balanceLabel.textContent = allowed
+        ? 'Aktueller Punktestand: ' + rewardBalance() + ' Punkte'
+        : 'Testbuchungen erst nach bestätigter Firebase-Master-Anmeldung verfügbar.';
+      document.querySelectorAll('[data-development-balance]').forEach(el => {
+        el.disabled = !allowed || developmentImportPending || developmentBalancePending ||
+          pendingCollectionWrites.has('rewardLedger') ||
+          !lastRemoteState || !sameRemoteValue(appState.rewardLedger,lastRemoteState.rewardLedger);
+      });
+    }
+    let developmentBalancePending = false;
+    async function setDevelopmentBalance(target) {
+      if (!Number.isSafeInteger(target) || ![100,-80,0].includes(target) ||
+          !developmentToolsAllowed() || developmentBalancePending ||
+          developmentImportPending || pendingCollectionWrites.has('rewardLedger') ||
+          !lastRemoteState || !sameRemoteValue(appState.rewardLedger,lastRemoteState.rewardLedger)) return;
+      if (!confirm('TEST-PUNKTESTAND auf ' + target + ' setzen?\\nEs wird eine Ausgleichsbuchung im isolierten Testraum angelegt.')) return;
+      if (!developmentToolsAllowed()) return;
+      developmentBalancePending = true;
+      renderDevelopmentPanel();
+      const roomRef = firebaseDbRef;
+      const id = 'development-balance:' + Date.now() + ':' + Math.random().toString(36).slice(2,12);
+      try {
+        const result = await roomRef.child('rewardLedger').transaction(current => {
+          if (current != null && !Array.isArray(current)) return;
+          const ledger = Array.isArray(current) ? current : [];
+          if (ledger.some(entry => entry && entry.id === id)) return;
+          const balance = ledger.reduce((sum,entry) => sum + Number(entry && entry.amount || 0),0);
+          const delta = target - balance;
+          if (!Number.isSafeInteger(balance) || !Number.isSafeInteger(delta)) return;
+          if (delta === 0) return ledger;
+          return [...ledger,{
+            id,amount:delta,
+            description:'🧪 Test-Punktestand auf ' + target + ' gesetzt',
+            timestamp:Date.now(),actorRole:'Master',developmentFixture:true
+          }];
+        },undefined,false);
+        if (!result.committed) throw new Error('Buchung nicht bestätigt');
+        showToast('Test-Punktestand auf ' + target + ' gesetzt.');
+      } catch(error) {
+        console.error('Test-Punktestand fehlgeschlagen',error);
+        showToast('Testbuchung fehlgeschlagen. Bitte Punktestand prüfen.','error');
+      } finally {
+        developmentBalancePending = false;
+        renderDevelopmentPanel();
+      }
     }
     let developmentImportPending = false;
     async function importDevelopmentFixtures() {
