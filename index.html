@@ -1375,6 +1375,14 @@
         recover.addEventListener('click', () => { backdrop.remove(); recoverSingleTestPunishment(); });
         panel.appendChild(recover);
       }
+      if (penaltyNumberRepairAllowed()) {
+        const fix = document.createElement('button');
+        fix.type = 'button';
+        fix.className = 'ml-2 mt-2 px-4 py-2 rounded-lg border border-amber-500 text-amber-200 text-sm';
+        fix.textContent = 'Strafennummern gezielt reparieren';
+        fix.addEventListener('click',()=>{backdrop.remove();repairPenaltyNumbers();});
+        panel.appendChild(fix);
+      }
       backdrop.appendChild(panel);
       document.getElementById('sync-conflict-review-overlay')?.remove();
       document.body.appendChild(backdrop);
@@ -1415,6 +1423,77 @@
           additions[0].itemNumber !== 'S-'+String(localCounters.strafen).padStart(4,'0')) return null;
       return {item:sanitizeForFirebase(additions[0]),remoteMgmt:sanitizeForFirebase(remote),
         remoteCounters:sanitizeForFirebase(remoteCounters)};
+    }
+    // One-time repair for four fixture numbers after the confirmed recovery.
+    // Exact IDs, current numbers and counter are checked atomically.
+    const PENALTY_NUMBER_REPAIR = [
+      ['mgmt-1795301411644-3lb1t','S-0005','S-0005'],
+      ['test-penalty-1','S-0009','S-0004'],
+      ['test-penalty-2','S-0008','S-0003'],
+      ['test-penalty-3','S-0007','S-0002'],
+      ['test-penalty-4','S-0006','S-0001']
+    ];
+    function penaltyNumberRepairAllowed() {
+      return productionSyncConflict && firebaseDbRef && productionRoomLoaded &&
+        testAuthUser && testAuthRole === 'Master' && currentRole === 'Master' &&
+        location.hostname === 'jnilats33.github.io' &&
+        location.pathname.startsWith('/Dominion-Test/') &&
+        firebaseRoomPathPending === DEVELOPMENT_TEST_ROOM &&
+        !recoveryPending && pendingCollectionWrites.size === 0;
+    }
+    async function repairPenaltyNumbers() {
+      if (!penaltyNumberRepairAllowed()) {
+        alert('Reparatur gesperrt: Master-Anmeldung, isolierter Testraum oder Konfliktsperre nicht bestätigt.');
+        return;
+      }
+      if (!confirm('Ausschließlich die vier alten Strafennummern auf S-0001 bis S-0004 und den Strafenzähler von 9 auf 5 korrigieren? Alle übrigen Felder bleiben unverändert.')) return;
+      recoveryPending = true;
+      let failureReason = 'Unbekannte Abweichung';
+      try {
+        const result = await new Promise((resolve,reject) => {
+          firebaseDbRef.transaction(current => {
+            if (!current || !Array.isArray(current.mgmt?.strafen) ||
+                Number(current.mgmtCounters?.strafen) !== 9) {
+              failureReason = 'Strafenliste oder Strafenzähler weicht ab'; return;
+            }
+            const items = current.mgmt.strafen;
+            if (items.length !== PENALTY_NUMBER_REPAIR.length) {
+              failureReason = 'Unerwartete Anzahl von Strafen'; return;
+            }
+            const byId = new Map(items.map(item => [item.id,item]));
+            if (byId.size !== items.length ||
+                PENALTY_NUMBER_REPAIR.some(([id,oldNumber]) =>
+                  !byId.has(id) || byId.get(id).itemNumber !== oldNumber)) {
+              failureReason = 'Strafen-IDs oder Nummern haben sich verändert'; return;
+            }
+            const next = sanitizeForFirebase(current);
+            const targetNumbers = new Map(PENALTY_NUMBER_REPAIR.map(([id,,newNumber])=>[id,newNumber]));
+            next.mgmt.strafen.forEach(item => { item.itemNumber = targetNumbers.get(item.id); });
+            next.mgmtCounters.strafen = 5;
+            return next;
+          },(error,committed,snapshot)=>{
+            if (error) reject(error);
+            else resolve({committed,snapshot});
+          },false);
+        });
+        if (!result.committed) {
+          alert('KEINE Reparatur durchgeführt. '+failureReason+
+            '\\nDie Konfliktsperre und Sicherung bleiben erhalten.');
+          return;
+        }
+        const saved = result.snapshot?.val();
+        if (!saved || Number(saved.mgmtCounters?.strafen)!==5 ||
+            PENALTY_NUMBER_REPAIR.some(([id,,number]) =>
+              saved.mgmt?.strafen?.find(item=>item.id===id)?.itemNumber!==number)) {
+          alert('Transaktion bestätigt, Ergebnisprüfung unklar. Bitte nichts weiter verändern und Bericht senden.');
+          return;
+        }
+        alert('Nummernreparatur bestätigt: fünf Strafen S-0001 bis S-0005, Strafenzähler 5. Konfliktsperre bleibt erhalten. Bitte Konfliktbericht erneut öffnen.');
+        openSyncConflictReview();
+      } catch(error) {
+        alert('Reparatur fehlgeschlagen: '+(error.code||'')+' '+(error.message||String(error))+
+          '\\nKonfliktsperre bleibt erhalten.');
+      } finally { recoveryPending = false; }
     }
     async function diagnoseTestRecovery() {
       const candidate = recoveryCandidate();
