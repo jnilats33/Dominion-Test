@@ -3661,13 +3661,27 @@
     }
     async function confirmRedemption() {
       const mode = redemptionMode();
-      if (!mode || redemptionPending || !firebaseDbRef || !productionRoomLoaded ||
-          productionSyncConflict || !lastRemoteState ||
-          pendingCollectionWrites.has('rewardLedger') || pendingCollectionWrites.has('mgmt') ||
-          !sameRemoteValue(appState.rewardLedger,lastRemoteState.rewardLedger) ||
-          !sameRemoteValue(appState.mgmt,lastRemoteState.mgmt) ||
-          !testAuthUser || testAuthRole !== currentRole) {
-        showToast('Synchronisation oder Rollenprüfung nicht bereit.','error'); return;
+      const blockers = [];
+      if (!mode) blockers.push('Rolle/Punktestand erlauben keine Einlösung');
+      if (redemptionPending) blockers.push('Buchung läuft bereits');
+      if (!firebaseDbRef || !productionRoomLoaded || !lastRemoteState)
+        blockers.push('Firebase-Raum noch nicht vollständig synchronisiert');
+      if (productionSyncConflict) blockers.push('Synchronisationskonflikt');
+      if (pendingCollectionWrites.has('rewardLedger')) blockers.push('Punktebuchung wird noch übertragen');
+      if (pendingCollectionWrites.has('mgmt')) blockers.push('Verwaltung wird noch übertragen');
+      if (lastRemoteState && !sameRemoteValue(appState.rewardLedger,lastRemoteState.rewardLedger))
+        blockers.push('Lokaler Punktestand weicht vom Server ab');
+      if (lastRemoteState && !sameRemoteValue(appState.mgmt,lastRemoteState.mgmt))
+        blockers.push('Lokale Verwaltung weicht vom Server ab');
+      if (!testAuthUser) blockers.push('Firebase-Anmeldung fehlt');
+      else if (testAuthRole !== currentRole)
+        blockers.push('Firebase-Rolle ' + (testAuthRole || 'unbekannt') + ' statt ' + currentRole);
+      if (blockers.length) {
+        const message = 'Einlösung gesperrt: ' + blockers.join('; ') + '.';
+        console.warn('Einlösungsdiagnose:', blockers);
+        showToast(message,'error');
+        alert(message);
+        return;
       }
       const chosen = redemptionCatalog(mode).filter(item => redemptionSelection[String(item.id)] > 0)
         .map(item => ({id:String(item.id),title:String(item.title || ''),
