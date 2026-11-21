@@ -2,7 +2,7 @@
 
 // Dominion-Test: backend scaffold. No deployment before secure client authentication
 // and restricted RTDB rules are configured.
-const { onValueCreated } = require('firebase-functions/v2/database');
+const { onValueCreated, onValueWritten } = require('firebase-functions/v2/database');
 const { onCall, HttpsError } = require('firebase-functions/v2/https');
 const { initializeApp } = require('firebase-admin/app');
 const { getDatabase } = require('firebase-admin/database');
@@ -103,5 +103,87 @@ exports.notifyTestChatV2 = onValueCreated({
   } catch (error) {
     logger.error('test_push_send_exception', { recipient, code: error.code || 'unknown' });
     throw error;
+  }
+});
+
+
+// Reuse the existing test FCM device registry and delivery mechanism.
+// These listeners do not modify app data and are scoped to the isolated test room.
+async function notifyOtherRole(sender, recipient, title, body, kind) {
+  if (!ROLES.has(sender) || !ROLES.has(recipient) || sender === recipient) return;
+  const snapshot = await getDatabase().ref(`pushDevices/${ROOM}/${recipient}`).get();
+  const devices = Object.entries(snapshot.val() || {}).filter(([, value]) => typeof value?.token === 'string');
+  if (!devices.length) return;
+  const selected = devices.slice(0, 500);
+  const response = await getMessaging().sendEachForMulticast({
+    tokens: selected.map(([, value]) => value.token),
+    data: {
+      title: String(title).slice(0, 100),
+      body: String(body).slice(0, 220),
+      kind,
+      url: 'https://jnilats33.github.io/Dominion-Test/',
+    },
+    webpush: { fcmOptions: { link: 'https://jnilats33.github.io/Dominion-Test/' } },
+  });
+  const invalid = [];
+  response.responses.forEach((result, index) => {
+    if (!result.success && ['messaging/registration-token-not-registered',
+      'messaging/invalid-registration-token'].includes(result.error?.code)) {
+      invalid.push(selected[index][0]);
+    }
+  });
+  await Promise.all(invalid.map(id => getDatabase().ref(`pushDevices/${ROOM}/${recipient}/${id}`).remove()));
+  logger.info('test_push_domain_result', {kind, recipient, successCount: response.successCount,
+    failureCount: response.failureCount});
+}
+
+function otherRole(sender) {
+  return sender === 'Master' ? 'Daisy' : sender === 'Daisy' ? 'Master' : null;
+}
+
+function newEntries(before, after) {
+  const previousIds = new Set((Array.isArray(before) ? before : []).filter(Boolean).map(item => item.id));
+  return (Array.isArray(after) ? after : []).filter(item =>
+    item && typeof item.id === 'string' && !previousIds.has(item.id));
+}
+
+exports.notifyTestTaskCreated = onValueWritten({
+  ref: `/rooms/${ROOM}/mgmt/aufgaben`,
+  instance: 'dominionapp-45bfa-default-rtdb',
+  region: REGION, maxInstances: 2, retry: false,
+}, async (event) => {
+  const created = newEntries(event.data.before.val(), event.data.after.val());
+  for (const task of created.slice(0, 20)) {
+    const sender = task.createdBy;
+    if (!ROLES.has(sender) || task.assignee !== otherRole(sender)) continue;
+    await notifyOtherRole(sender, task.assignee, 'Neue Aufgabe für dich',
+      `${sender} hat dir eine Aufgabe zugewiesen: ${task.title || 'Ohne Titel'}`, 'task');
+  }
+});
+
+exports.notifyTestCalendarChanged = onValueWritten({
+  ref: `/rooms/${ROOM}/kalender`,
+  instance: 'dominionapp-45bfa-default-rtdb',
+  region: REGION, maxInstances: 2, retry: false,
+}, async (event) => {
+  const before = Array.isArray(event.data.before.val()) ? event.data.before.val() : [];
+  const after = Array.isArray(event.data.after.val()) ? event.data.after.val() : [];
+  const oldById = new Map(before.filter(item => item?.id).map(item => [item.id, item]));
+  const notifiedGroups = new Set();
+  for (const entry of after) {
+    if (!entry?.id) continue;
+    const previous = oldById.get(entry.id);
+    const sender = previous ? entry.lastEditedBy : entry.createdBy;
+    // For edits, the editor must be recorded by the client; never guess who changed it.
+    if (!ROLES.has(sender) || entry.owner !== otherRole(sender)) continue;
+    if (previous && ['title','date','time','endDate','endTime','owner'].every(key =>
+      (previous[key] || '') === (entry[key] || ''))) continue;
+    const dedupeKey = `${entry.groupId || entry.id}:${sender}:${previous ? 'edit' : 'new'}`;
+    if (notifiedGroups.has(dedupeKey)) continue;
+    notifiedGroups.add(dedupeKey);
+    await notifyOtherRole(sender, entry.owner,
+      previous ? 'Termin geändert' : 'Neuer Termin für dich',
+      `${sender} hat ${previous ? 'deinen Termin geändert' : 'einen Termin eingetragen'}: ${entry.title || 'Ohne Titel'} (${entry.date || ''} ${entry.time || ''})`,
+      previous ? 'calendar-updated' : 'calendar-created');
   }
 });
