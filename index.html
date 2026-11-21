@@ -6,7 +6,7 @@
   <meta name="theme-color" content="#0f1117" />
   <meta name="apple-mobile-web-app-capable" content="yes" />
   <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
-  <title>Dominion TEST – v2.9</title>
+  <title>Dominion TEST – v2.10</title>
   <script src="https://cdn.tailwindcss.com"></script>
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
@@ -267,41 +267,34 @@
             <h3 class="font-display text-sm font-bold text-[#e5b55c] flex items-center gap-2">
               <span>🚀</span> Update-News: Dominion <span id="dashboard-version-news"></span>
             </h3>
-            <span class="text-[10px] px-2 py-0.5 rounded-full bg-[#c9973e]/15 text-[#e5b55c] border border-[#c9973e]/30">Version 2.9</span>
+            <span class="text-[10px] px-2 py-0.5 rounded-full bg-[#c9973e]/15 text-[#e5b55c] border border-[#c9973e]/30">Version 2.10</span>
           </div>
-          <p class="text-[11px] text-slate-400">Stand: 21.11.2026 · Dieses Update enthält die bisherigen Verbesserungen und zusätzliche Stabilitätsmaßnahmen.</p>
+          <p class="text-[11px] text-slate-400">Stand: 22.11.2026 · Neue Funktionen und Verbesserungen in der Test-App.</p>
           <ul class="text-xs text-slate-300 leading-relaxed list-disc pl-5 space-y-1">
-            <li><strong>Kalender:</strong> Termin-Pop-ups, Zeitspannen, mehrtägige Termine und getrennte Punkte für Erfüllung oder Nichterfüllung.</li>
-            <li><strong>Dashboard:</strong> Bereiche sortieren und Übersichtskacheln separat ein- oder ausblenden.</li>
-            <li><strong>Neue Inhalte:</strong> Menüzähler für ungelesene Einträge.</li>
-            <li><strong>Chat:</strong> Nachrichten und Audionachrichten überarbeitet; Push-Benachrichtigungen vorbereitet.</li>
-            <li><strong>Bilder:</strong> Upload für Toys und Kleidung wiederhergestellt.</li>
-            <li><strong>Synchronisation:</strong> Testnummern bleiben erhalten; Konfliktentwürfe können bewusst zugunsten der Serverdaten abgeschlossen werden.</li>
-            <li><strong>Übersicht:</strong> Neue Kacheln für eingelöste Belohnungen und zu erwartende Bestrafungen.</li>
+            <li><strong>Erinnerungen:</strong> Aufgaben und Termine erhalten eine wählbare Vorlaufzeit: 30 Minuten, 1 Stunde, 4 Stunden, 1 Tag, 3 Tage oder 2 Wochen; alternativ keine Erinnerung.</li>
+            <li><strong>Bearbeitung:</strong> Die gewählte Erinnerungszeit bleibt gespeichert und lässt sich nachträglich ändern.</li>
+            <li><strong>Update-News:</strong> Versionshistorie als übersichtliche Tabelle mit einzeln aufgeführten Änderungen.</li>
+            <li><strong>Push-Vorbereitung:</strong> Backend-Code für Benachrichtigungen zu neuen Aufgaben sowie neuen und geänderten Terminen ergänzt – noch nicht deployt. Zeitgesteuerte Erinnerungs-Pushs sind noch nicht aktiv.</li>
           </ul>
           <details class="group border-t border-slate-800 pt-3">
             <summary class="cursor-pointer select-none flex items-center justify-between gap-2 text-xs font-semibold text-[#e5b55c] hover:text-white">
               <span>📚 Frühere Updates und Änderungen anzeigen</span>
               <span class="group-open:rotate-180 transition-transform" aria-hidden="true">▾</span>
             </summary>
-            <div class="mt-3 space-y-3 text-xs text-slate-300">
-              <div class="rounded-xl bg-white/[0.03] border border-slate-800 p-3 space-y-1"><strong class="text-[#e5b55c]">Dominion v2.8 · 20.11.2026</strong><p>Überarbeitete Punktebuchungen und Löschfunktion, Verbesserungen bei Dashboard und Benachrichtigungen sowie Arbeiten an der Synchronisation. Die bestehenden v2.9-Änderungen werden im aktuellen Update angezeigt.</p></div>
-              <div class="rounded-xl bg-white/[0.03] border border-slate-800 p-3 space-y-1"><strong class="text-[#e5b55c]">Dominion v2.7 · 19.11.2026</strong><p>Punktewerte für Belohnungen und Strafen im Formular, Löschfunktion für Punktebuchungen (in v2.8 repariert), Bonus-Hinweise für Daisy, Dashboard „Heute“ und „Nächste Termine &amp; Deadlines“ mit Rollenfilter.</p></div>
-              <div class="rounded-xl bg-white/[0.03] border border-slate-800 p-3 space-y-1"><strong class="text-[#e5b55c]">Dominion v2.6 · 18.11.2026</strong><p>Aufgabenverwaltung, Rewards-Punktekonto und automatische Punktevergabe, Dashboard-Bereich „Heute“, neue Statistik- und Ansichtseinstellungen.</p></div>
-              <div class="rounded-xl bg-white/[0.03] border border-slate-800 p-3 space-y-1">
-                <div class="flex flex-wrap justify-between gap-1"><strong class="text-[#e5b55c]">Dominion v2.5 · Dashboard-Update</strong><span class="text-slate-500">17.11.2026</span></div>
-                <p>Das Dashboard wird persönlicher: sieben Statistik-Kacheln inklusive Toys, Kleidung und Regeln; einklappbare und festpinnbare Bereiche; einheitliche Kartenoptik sowie <strong>Einstellungen → Ansicht → Dashboard</strong> zum individuellen Ein- und Ausblenden für Master und Daisy. Außerdem erhältst du hier einen ausklappbaren Versionsverlauf.</p>
+            <div class="mt-3 text-xs text-slate-300">
+              <div class="overflow-x-auto rounded-xl border border-slate-800">
+                <table class="w-full min-w-[340px] text-left border-collapse">
+                  <thead class="bg-white/[0.05] text-slate-400"><tr><th scope="col" class="px-3 py-2 w-28">Version / Datum</th><th scope="col" class="px-3 py-2">Änderungen im Einzelnen</th></tr></thead>
+                  <tbody>                <tr class="border-b border-slate-800/80 align-top"><th scope="row" class="text-left px-3 py-3 font-semibold text-[#e5b55c] whitespace-nowrap">v2.9<div class="font-normal text-[10px] text-slate-500 mt-1">21.11.2026</div></th><td class="px-3 py-3"><ul class="list-disc pl-4 space-y-1"><li>Kalender: Termin-Pop-ups, Zeitspannen, mehrtägige Termine und getrennte Punkte für Erfüllung/Nichterfüllung.</li><li>Dashboard: Bereiche sortierbar; Übersichtskacheln separat ein- und ausblendbar.</li><li>Neue Inhalte: Menüzähler für ungelesene Einträge.</li><li>Chat: Nachrichten und Audio überarbeitet; Push-Benachrichtigungen vorbereitet.</li><li>Bilder: Upload für Toys und Kleidung wiederhergestellt.</li><li>Synchronisation: Testnummern erhalten; Konfliktentwürfe können bewusst mit Serverdaten abgeschlossen werden.</li><li>Übersicht: Kacheln für eingelöste Belohnungen und zu erwartende Bestrafungen.</li></ul></td></tr>
+                <tr class="border-b border-slate-800/80 align-top"><th scope="row" class="text-left px-3 py-3 font-semibold text-[#e5b55c] whitespace-nowrap">v2.8<div class="font-normal text-[10px] text-slate-500 mt-1">20.11.2026</div></th><td class="px-3 py-3"><ul class="list-disc pl-4 space-y-1"><li>Punktebuchungen und Löschfunktion überarbeitet.</li><li>Verbesserungen am Dashboard und an Benachrichtigungen.</li><li>Arbeiten an der Synchronisation.</li></ul></td></tr>
+                <tr class="border-b border-slate-800/80 align-top"><th scope="row" class="text-left px-3 py-3 font-semibold text-[#e5b55c] whitespace-nowrap">v2.7<div class="font-normal text-[10px] text-slate-500 mt-1">19.11.2026</div></th><td class="px-3 py-3"><ul class="list-disc pl-4 space-y-1"><li>Punktewerte für Belohnungen und Strafen im Formular.</li><li>Löschfunktion für Punktebuchungen (in v2.8 repariert).</li><li>Bonus-Hinweise für Daisy.</li><li>Dashboard: „Heute“ sowie „Nächste Termine &amp; Deadlines“ mit Rollenfilter.</li></ul></td></tr>
+                <tr class="border-b border-slate-800/80 align-top"><th scope="row" class="text-left px-3 py-3 font-semibold text-[#e5b55c] whitespace-nowrap">v2.6<div class="font-normal text-[10px] text-slate-500 mt-1">18.11.2026</div></th><td class="px-3 py-3"><ul class="list-disc pl-4 space-y-1"><li>Aufgabenverwaltung und Rewards-Punktekonto.</li><li>Automatische Punktevergabe.</li><li>Dashboard-Bereich „Heute“.</li><li>Neue Statistik- und Ansichtseinstellungen.</li></ul></td></tr>
+                <tr class="border-b border-slate-800/80 align-top"><th scope="row" class="text-left px-3 py-3 font-semibold text-[#e5b55c] whitespace-nowrap">v2.5<div class="font-normal text-[10px] text-slate-500 mt-1">17.11.2026</div></th><td class="px-3 py-3"><ul class="list-disc pl-4 space-y-1"><li>Sieben Statistik-Kacheln einschließlich Toys, Kleidung und Regeln.</li><li>Dashboard-Bereiche einklappbar und festpinnbar.</li><li>Einheitliche Kartenoptik.</li><li>Einstellungen → Ansicht → Dashboard: individuelle Sichtbarkeit für Master und Daisy.</li><li>Ausklappbarer Versionsverlauf.</li></ul></td></tr>
+                <tr class="border-b border-slate-800/80 align-top"><th scope="row" class="text-left px-3 py-3 font-semibold text-[#e5b55c] whitespace-nowrap">Produktivänderungen<div class="font-normal text-[10px] text-slate-500 mt-1">15.11.2026</div></th><td class="px-3 py-3"><ul class="list-disc pl-4 space-y-1"><li>Bilder-Upload und Bildbearbeitung für Toys und Kleidung wiederhergestellt.</li><li>Dauerhafte kategoriespezifische Artikelnummern.</li><li>Firebase-Authentifizierung und Datenbankanbindung angepasst.</li><li>Keiner gesonderten Versionsnummer zugeordnet.</li></ul></td></tr>
+                <tr class="border-b border-slate-800/80 align-top"><th scope="row" class="text-left px-3 py-3 font-semibold text-[#e5b55c] whitespace-nowrap">v2.3<div class="font-normal text-[10px] text-slate-500 mt-1">Datum nicht dokumentiert</div></th><td class="px-3 py-3"><ul class="list-disc pl-4 space-y-1"><li>Visueller Monatskalender mit Master-/Daisy-Overlay.</li><li>Rechtefilterung des Aktivitäts-Streams für Daisy.</li><li>Firebase Cloud Messaging (FCM) integriert; zuverlässige Push-Zustellung damals nicht bestätigt.</li></ul></td></tr></tbody>
+                </table>
               </div>
-              <div class="rounded-xl bg-white/[0.03] border border-slate-800 p-3 space-y-1">
-                <div class="flex flex-wrap justify-between gap-1"><strong class="text-[#e5b55c]">15.11.2026 · Produktivänderungen</strong><span class="text-slate-500">GitHub-Änderungsdatum</span></div>
-                <p>Wiederherstellung des Bilder-Uploads und der Bildbearbeitung für Toys und Kleidung; dauerhafte, kategoriespezifische Artikelnummern. Außerdem Anpassungen an Firebase-Authentifizierung und Datenbankanbindung.</p>
-                <p class="text-slate-500">Keiner gesonderten Versionsnummer zugeordnet.</p>
-              </div>
-              <div class="rounded-xl bg-white/[0.03] border border-slate-800 p-3 space-y-1">
-                <div class="flex flex-wrap justify-between gap-1"><strong class="text-[#e5b55c]">Dominion v2.3</strong><span class="text-slate-500">Veröffentlichungsdatum nicht dokumentiert</span></div>
-                <p>Die bisherige Update-Meldung nennt einen visuellen Monatskalender mit Master-/Daisy-Overlay, die Rechtefilterung des Aktivitäts-Streams für Daisy und die Integration von Firebase Cloud Messaging (FCM). Die zuverlässige Push-Zustellung ist noch nicht bestätigt.</p>
-              </div>
-              <p class="text-[11px] text-slate-500">Hinweis: GitHub dokumentiert Codeänderungen, nicht zwingend den Zeitpunkt ihrer tatsächlichen Freischaltung. Ältere Versionen ergänzen wir nur mit überprüfbaren Angaben.</p>
+              <p class="text-[11px] text-slate-500 mt-3">Hinweis: GitHub dokumentiert Codeänderungen, nicht zwingend den Zeitpunkt ihrer tatsächlichen Freischaltung. Ältere Versionen ergänzen wir nur mit überprüfbaren Angaben.</p>
             </div>
           </details>
         </div>
@@ -1033,7 +1026,7 @@
      * DOMINION APP v2.3 - STATE, MIGRATION & FCM PUSH ENGINE
      * =========================================================================
      */
-    const APP_VERSION = '2.9';
+    const APP_VERSION = '2.10';
     const STORAGE_KEY = 'dominion_test_state_20261114';
     const LEGACY_KEYS = [];
     const DEVICE_PREFS_KEY = 'dominion_test_device_prefs_20261114';
