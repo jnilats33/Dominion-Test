@@ -1425,16 +1425,55 @@
       try {
         const snap = await firebaseDbRef.once('value');
         const live = snap.val();
-        const checks = [
-          ['Verwaltung gesamt',sameRemoteValue(live?.mgmt,candidate.remoteMgmt)],
-          ['Strafenliste',sameRemoteValue(live?.mgmt?.strafen,candidate.remoteMgmt.strafen)],
-          ['Zähler gesamt',sameRemoteValue(live?.mgmtCounters,candidate.remoteCounters)],
-          ['Strafenzähler',sameRemoteValue(live?.mgmtCounters?.strafen,candidate.remoteCounters.strafen)],
-          ['Eintrag existiert bereits',!!(live?.mgmt?.strafen||[]).some(item=>item.id===candidate.item.id)]
+        const liveMgmt = live?.mgmt || {};
+        const expectedMgmt = candidate.remoteMgmt || {};
+        const liveCounters = live?.mgmtCounters || {};
+        const expectedCounters = candidate.remoteCounters || {};
+        const categories = MGMT_CATEGORIES.map(c=>c.id);
+        const lines = [
+          'Nur-Lese-Diagnose: Keine Daten geschrieben.',
+          'Server vorhanden: '+!!live,
+          'Strafe Test bereits vorhanden: '+!!(liveMgmt.strafen||[]).some(i=>i.id===candidate.item.id),
+          'Verwaltung gleich: '+sameRemoteValue(liveMgmt,expectedMgmt),
+          'Zähler gleich: '+sameRemoteValue(liveCounters,expectedCounters),
+          '--- Kategorien: Server / Erwartet / Gleich ---'
         ];
-        const details = checks.map(([label,ok])=>label+': '+(ok?'JA':'NEIN')).join('\\n');
-        alert('Nur-Lese-Diagnose – es wurde nichts geschrieben.\\n\\n'+details+
-          '\\n\\nBitte Screenshot senden. Konfliktsperre bleibt aktiv.');
+        for (const category of categories) {
+          const actual = liveMgmt[category] || [], expected = expectedMgmt[category] || [];
+          lines.push(category+': '+actual.length+' / '+expected.length+' / '+sameRemoteValue(actual,expected));
+        }
+        lines.push('--- Zähler: Server / Erwartet ---');
+        for (const category of categories) {
+          lines.push(category+': '+String(liveCounters[category]??'fehlt')+' / '+String(expectedCounters[category]??'fehlt'));
+        }
+        const actualIds = (liveMgmt.strafen||[]).map(i=>i.id);
+        const expectedIds = (expectedMgmt.strafen||[]).map(i=>i.id);
+        lines.push('Strafen nur Server: '+actualIds.filter(id=>!expectedIds.includes(id)).join(', '));
+        lines.push('Strafen nur Erwartung: '+expectedIds.filter(id=>!actualIds.includes(id)).join(', '));
+        lines.push('Konfliktsperre bleibt aktiv. Bitte Text kopieren.');
+        const report = lines.join(String.fromCharCode(10));
+        console.info('Dominion Test Recovery Read-Only',report);
+        const overlay = document.createElement('div');
+        overlay.className = 'fixed inset-0 z-[110] bg-black/85 flex items-center justify-center p-4';
+        const panel = document.createElement('section');
+        panel.className = 'bg-[#151923] border border-amber-500 rounded-xl p-5 w-full max-w-2xl text-slate-100';
+        const heading = document.createElement('h2');
+        heading.className = 'font-bold mb-3';
+        heading.textContent = 'Serverdiagnose – nur lesen';
+        const pre = document.createElement('pre');
+        pre.className = 'text-xs whitespace-pre-wrap break-all max-h-[60vh] overflow-auto bg-black/30 p-3 rounded';
+        pre.textContent = report;
+        const copy = document.createElement('button');
+        copy.textContent = 'Diagnose kopieren';
+        copy.className = 'mt-3 mr-3 px-3 py-2 rounded bg-amber-700 text-white';
+        copy.onclick = () => { navigator.clipboard.writeText(report).then(()=>{copy.textContent='Kopiert';}).catch(()=>{copy.textContent='Bitte Text markieren';}); };
+        const close = document.createElement('button');
+        close.textContent = 'Schließen';
+        close.className = 'mt-3 px-3 py-2 rounded border border-slate-600';
+        close.onclick = () => overlay.remove();
+        panel.append(heading,pre,copy,close);
+        overlay.appendChild(panel);
+        document.body.appendChild(overlay);
       } catch (error) {
         alert('Nur-Lese-Diagnose fehlgeschlagen: '+(error.code||'')+' '+(error.message||String(error)));
       }
