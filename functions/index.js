@@ -7,6 +7,7 @@ const { onCall, HttpsError } = require('firebase-functions/v2/https');
 const { initializeApp } = require('firebase-admin/app');
 const { getDatabase } = require('firebase-admin/database');
 const { getMessaging } = require('firebase-admin/messaging');
+const logger = require('firebase-functions/logger');
 
 initializeApp();
 
@@ -51,14 +52,27 @@ exports.notifyTestChatV2 = onValueCreated({
 }, async (event) => {
   const message = event.data.val();
   if (!message || !ROLES.has(message.sender) ||
-      typeof message.id !== 'string' || message.id !== event.params.messageId) return;
-    const recipient = message.sender === 'Master' ? 'Daisy' : 'Master';
-    const devicesSnapshot = await getDatabase().ref(`pushDevices/${ROOM}/${recipient}`).get();
-    const devices = devicesSnapshot.val() || {};
-    const entries = Object.entries(devices).filter(([, v]) => typeof v?.token === 'string');
-    if (!entries.length) return;
-    const selected = entries.slice(0, 500); // FCM multicast limit.
-    const tokens = selected.map(([, v]) => v.token);
+      typeof message.id !== 'string' || message.id !== event.params.messageId) {
+    logger.warn('test_push_skipped_invalid_message', {
+      hasMessage: !!message,
+      senderRoleValid: ROLES.has(message?.sender),
+      messageIdValid: typeof message?.id === 'string' && message.id === event.params.messageId,
+    });
+    return;
+  }
+
+  const recipient = message.sender === 'Master' ? 'Daisy' : 'Master';
+  logger.info('test_push_message_received', { sender: message.sender, recipient });
+
+  const devicesSnapshot = await getDatabase().ref(`pushDevices/${ROOM}/${recipient}`).get();
+  const devices = devicesSnapshot.val() || {};
+  const entries = Object.entries(devices).filter(([, v]) => typeof v?.token === 'string');
+  logger.info('test_push_recipient_devices', { recipient, registeredDevices: entries.length });
+  if (!entries.length) return;
+
+  const selected = entries.slice(0, 500); // FCM multicast limit.
+  const tokens = selected.map(([, v]) => v.token);
+  try {
     const response = await getMessaging().sendEachForMulticast({
       tokens,
       data: {
@@ -69,10 +83,25 @@ exports.notifyTestChatV2 = onValueCreated({
       webpush: { fcmOptions: { link: 'https://jnilats33.github.io/Dominion-Test/' } },
     });
     const invalid = [];
+    const errorCounts = {};
     response.responses.forEach((result, i) => {
-      if (!result.success && ['messaging/registration-token-not-registered', 'messaging/invalid-registration-token'].includes(result.error?.code)) {
-        invalid.push(selected[i][0]);
+      if (!result.success) {
+        const code = result.error?.code || 'unknown';
+        errorCounts[code] = (errorCounts[code] || 0) + 1;
+        if (['messaging/registration-token-not-registered', 'messaging/invalid-registration-token'].includes(code)) {
+          invalid.push(selected[i][0]);
+        }
       }
     });
+    logger.info('test_push_fcm_result', {
+      recipient,
+      successCount: response.successCount,
+      failureCount: response.failureCount,
+      errorCounts,
+    });
     await Promise.all(invalid.map(id => getDatabase().ref(`pushDevices/${ROOM}/${recipient}/${id}`).remove()));
+  } catch (error) {
+    logger.error('test_push_send_exception', { recipient, code: error.code || 'unknown' });
+    throw error;
+  }
 });
