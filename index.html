@@ -1281,6 +1281,9 @@
                       const prefs = getDevicePrefs();
                       prefs.fcmToken = token;
                       saveDevicePrefs(prefs);
+                      // Authentication and FCM initialization can finish in either order.
+                      // Register after token refresh as well as after auth restoration.
+                      registerTestPushToken().catch(e => console.warn('Automatic push registration pending:', e.message));
                     }
                   }).catch(e => console.warn('FCM silent token refresh warning:', e));
                 }
@@ -1391,29 +1394,33 @@
       const status = document.getElementById('test-push-registration-state');
       try {
         const fn = firebase.app().functions('europe-west1').httpsCallable('registerTestPushDevice');
-        await fn({ token: prefs.fcmToken, deviceId: prefs.pushDeviceId });
+        const result = await fn({ token: prefs.fcmToken, deviceId: prefs.pushDeviceId });
+        if (result.data?.registered !== true) throw new Error('Push-Server hat die Registrierung nicht bestätigt.');
         if (status) status.textContent = '✓ Push-Gerät serverseitig registriert.';
-        showToast('Push-Gerät sicher registriert!', 'success');
+        setPushPermissionStatus('Push aktiv – serverseitig registriert', true);
       } catch (error) {
         if (status) status.textContent = 'Push-Server noch nicht erreichbar oder Registrierung fehlgeschlagen.';
+        setPushPermissionStatus('Push-Registrierung fehlgeschlagen', false);
         console.warn('Secure push registration:', error.code || error.message);
         throw error;
       }
     }
 
+    function setPushPermissionStatus(message, ok) {
+      for (const id of ['push-status-pill', 'daisy-push-status-pill']) {
+        const pill = document.getElementById(id);
+        if (pill) {
+          pill.textContent = message;
+          pill.className = 'inline-block text-[11px] px-2.5 py-1 rounded-full ' +
+            (ok ? 'bg-emerald-500/15 text-emerald-300 border border-emerald-300/30' :
+              'bg-amber-500/15 text-amber-300 border border-amber-500/30');
+        }
+      }
+    }
+
     async function requestPushPermissions() {
       let step = 'Browser-Unterstützung';
-      const setPushStatus = (message, ok) => {
-        for (const id of ['push-status-pill', 'daisy-push-status-pill']) {
-          const pill = document.getElementById(id);
-          if (pill) {
-            pill.textContent = message;
-            pill.className = 'inline-block text-[11px] px-2.5 py-1 rounded-full ' +
-              (ok ? 'bg-emerald-500/15 text-emerald-300 border border-emerald-500/30' :
-                'bg-amber-500/15 text-amber-300 border border-amber-500/30');
-          }
-        }
-      };
+      const setPushStatus = setPushPermissionStatus;
       try {
         if (!('Notification' in window)) throw new Error('Dieser Browser unterstützt keine Web-Benachrichtigungen.');
         if (!('serviceWorker' in navigator)) throw new Error('Service Worker werden nicht unterstützt.');
@@ -1442,10 +1449,13 @@
         prefs.fcmToken = token;
         saveDevicePrefs(prefs);
         if (testAuthUser && testAuthRole === currentRole) {
-          await registerTestPushToken().catch(e => console.warn('Push backend not deployed yet:', e.message));
+          step = 'Serverregistrierung';
+          await registerTestPushToken();
+          showToast('Push-Gerät erfolgreich bei Firebase registriert!', 'success');
+        } else {
+          setPushStatus('Berechtigung erteilt – Firebase-Anmeldung erforderlich', false);
+          showToast('Push-Berechtigung erteilt. Firebase-Anmeldung noch erforderlich.', 'success');
         }
-        setPushStatus('Firebase-Registrierung erfolgreich', true);
-        showToast('Push-Gerät erfolgreich bei Firebase registriert!', 'success');
       } catch (err) {
         console.error('Push-Aktivierung fehlgeschlagen bei ' + step + ':', err);
         const details = err && err.message ? err.message : String(err);
