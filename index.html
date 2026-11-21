@@ -1371,8 +1371,8 @@
         const recover = document.createElement('button');
         recover.type = 'button';
         recover.className = 'ml-2 mt-2 px-4 py-2 rounded-lg border border-amber-500 text-amber-200 text-sm';
-        recover.textContent = 'Serververgleich prüfen (nur lesen)';
-        recover.addEventListener('click', () => { backdrop.remove(); diagnoseTestRecovery(); });
+        recover.textContent = 'Nur Strafe „Test“ wiederherstellen';
+        recover.addEventListener('click', () => { backdrop.remove(); recoverSingleTestPunishment(); });
         panel.appendChild(recover);
       }
       backdrop.appendChild(panel);
@@ -1496,12 +1496,19 @@
       recoveryPending = true;
       const ref = firebaseDbRef;
       ref.transaction(current => {
-        if (!current || !sameRemoteValue(current.mgmt,candidate.remoteMgmt) ||
-            !sameRemoteValue(current.mgmtCounters,candidate.remoteCounters)) return;
+        if (!current) return;
+        // Compare the normalized live collections, not raw Firebase records:
+        // numbering is generated locally and may not exist in Firebase.
+        const normalizedLive = mergeWithDefaults(sanitizeForFirebase(current));
+        const categories = MGMT_CATEGORIES.map(c => c.id);
+        if (categories.some(cat => !sameRemoteValue(
+              normalizedLive.mgmt[cat], candidate.remoteMgmt[cat]))) return;
+        if (!sameRemoteValue(normalizedLive.mgmtCounters,candidate.remoteCounters)) return;
         const currentItems = current.mgmt.strafen || [];
         if (currentItems.some(item=>item.id===candidate.item.id)) return;
         const next = sanitizeForFirebase(current);
         next.mgmt.strafen = [candidate.item,...currentItems];
+        // Preserve every other raw server field and counter unchanged.
         next.mgmtCounters = {...(current.mgmtCounters||{}),
           strafen:Number(candidate.remoteCounters.strafen)+1};
         return next;
