@@ -1379,8 +1379,8 @@
         const fix = document.createElement('button');
         fix.type = 'button';
         fix.className = 'ml-2 mt-2 px-4 py-2 rounded-lg border border-amber-500 text-amber-200 text-sm';
-        fix.textContent = 'Strafennummern gezielt reparieren';
-        fix.addEventListener('click',()=>{backdrop.remove();repairPenaltyNumbers();});
+        fix.textContent = 'Strafennummern prüfen (nur lesen)';
+        fix.addEventListener('click',()=>{backdrop.remove();inspectPenaltyNumbers();});
         panel.appendChild(fix);
       }
       backdrop.appendChild(panel);
@@ -1440,6 +1440,51 @@
         location.pathname.startsWith('/Dominion-Test/') &&
         firebaseRoomPathPending === DEVELOPMENT_TEST_ROOM &&
         !recoveryPending && pendingCollectionWrites.size === 0;
+    }
+    async function inspectPenaltyNumbers() {
+      if (!penaltyNumberRepairAllowed()) {
+        alert('Diagnose gesperrt: Test-Master oder isolierter Testraum nicht bestätigt.');
+        return;
+      }
+      try {
+        const snap = await firebaseDbRef.once('value');
+        const live = snap.val();
+        const items = live?.mgmt?.strafen;
+        const report = [
+          'Nur-Lese-Diagnose – keine Schreibzugriffe',
+          'Serverdaten vorhanden: '+Boolean(live),
+          'Strafenliste ist Array: '+Array.isArray(items),
+          'Strafenanzahl: '+(Array.isArray(items)?items.length:'unbekannt'),
+          'Strafenzähler: '+String(live?.mgmtCounters?.strafen??'fehlt'),
+          '--- ID / tatsächliche Nummer / erwartete aktuelle Nummer ---',
+          ...PENALTY_NUMBER_REPAIR.map(([id,oldNumber])=>{
+            const item = Array.isArray(items)?items.find(x=>x.id===id):null;
+            return id+' / '+(item?.itemNumber??'fehlt')+' / '+oldNumber;
+          }),
+          'Konfliktsperre bleibt bestehen.'
+        ].join(String.fromCharCode(10));
+        const overlay=document.createElement('div');
+        overlay.className='fixed inset-0 z-[120] bg-black/90 flex items-center justify-center p-4';
+        const panel=document.createElement('section');
+        panel.className='bg-[#151923] border border-amber-500 rounded-xl p-5 w-full max-w-2xl text-slate-100';
+        const title=document.createElement('h2');
+        title.textContent='Nummernprüfung – nur lesen';
+        title.className='font-bold mb-3';
+        const pre=document.createElement('pre');
+        pre.className='text-xs whitespace-pre-wrap break-all max-h-[60vh] overflow-auto bg-black/30 p-3 rounded';
+        pre.textContent=report;
+        const copy=document.createElement('button');
+        copy.textContent='Bericht kopieren';
+        copy.className='mt-3 mr-3 px-3 py-2 rounded bg-amber-700';
+        copy.onclick=()=>navigator.clipboard.writeText(report).then(()=>copy.textContent='Kopiert').catch(()=>copy.textContent='Bitte Text markieren');
+        const close=document.createElement('button');
+        close.textContent='Schließen';
+        close.className='mt-3 px-3 py-2 rounded border border-slate-600';
+        close.onclick=()=>overlay.remove();
+        panel.append(title,pre,copy,close);
+        overlay.appendChild(panel);
+        document.body.appendChild(overlay);
+      } catch(e) {alert('Lesediagnose fehlgeschlagen: '+(e.message||String(e)));}
     }
     async function repairPenaltyNumbers() {
       if (!penaltyNumberRepairAllowed()) {
