@@ -1438,7 +1438,12 @@
       }, (error,committed,snapshot) => {
         recoveryPending = false;
         if (error || !committed) {
-          showToast('Keine Wiederherstellung: Serveränderung oder Firebase-Fehler. Konfliktentwurf bleibt gesichert.', 'error');
+          const reason = error
+            ? 'Firebase-Fehler (' + (error.code || 'unbekannt') + '): ' + (error.message || String(error))
+            : 'Sicherheitsprüfung abgebrochen: Der aktuelle Serverstand weicht vom erwarteten Vergleichsstand ab oder der Eintrag existiert bereits.';
+          console.warn('Gezielte Wiederherstellung nicht abgeschlossen:', {reason, committed});
+          alert('Wiederherstellung NICHT durchgeführt.\\n\\n' + reason +
+            '\\n\\nDer lokale Konfliktentwurf und die Synchronisationssperre bleiben erhalten.\\n\\nBitte diese Meldung kopieren oder fotografieren.');
           return;
         }
         // Verify the transaction result before removing any recovery material.
