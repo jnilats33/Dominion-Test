@@ -3871,7 +3871,17 @@
       const bal = rewardBalance();
       document.getElementById('dashboard-reward-balance').textContent = (bal > 0 ? '+' : '') + bal;
       const candidates = (appState.mgmt[bal >= 0 ? 'belohnungen' : 'strafen'] || []).filter(x => rewardAmount(x.rewardPoints) > 0 && rewardAmount(x.rewardPoints) <= Math.abs(bal)).sort((a,b) => rewardAmount(b.rewardPoints) - rewardAmount(a.rewardPoints));
-      document.getElementById('dashboard-reward-hint').textContent = candidates.length ? (bal >= 0 ? '🎁 Erreichbar: ' : '⚠️ Strafe möglich: ') + candidates[0].title + ' (' + rewardAmount(candidates[0].rewardPoints) + ' Punkte)' : (bal < 0 ? 'Noch keine passende Strafe hinterlegt' : 'Noch keine Belohnung erreichbar');
+      const hint = document.getElementById('dashboard-reward-hint');
+      if (currentRole === 'Daisy' && bal > 0 && candidates.length &&
+          hasPermission('rewards','visible')) {
+        hint.innerHTML = '<button type="button" onclick="switchTab(\'rewards\')" class="w-full text-left rounded-lg border border-amber-400/50 bg-amber-500/15 px-3 py-2 text-amber-100 font-semibold">🎁 Belohnung verfügbar · ' +
+          escapeHtml(candidates[0].title) + ' (' +
+          rewardAmount(candidates[0].rewardPoints) + ' Punkte) · Zu Rewards →</button>';
+      } else {
+        hint.textContent = candidates.length ? (bal >= 0 ? '🎁 Erreichbar: ' : '⚠️ Strafe möglich: ') +
+          candidates[0].title + ' (' + rewardAmount(candidates[0].rewardPoints) + ' Punkte)' :
+          (bal < 0 ? 'Noch keine passende Strafe hinterlegt' : 'Noch keine Belohnung erreichbar');
+      }
     }
 
     setInterval(() => { if (currentRole && processTaskDeadlines()) refreshAllUI(); }, 30000);
