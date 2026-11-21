@@ -3659,6 +3659,14 @@
         '<button class="px-4 py-2 rounded-lg bg-white/10 text-xs" ' + (redemptionPending ? 'disabled' : '') +
         ' onclick="redemptionSelection={};renderRewards()">Zurücksetzen</button></div></div>';
     }
+    // The UI assigns display itemNumbers while hydrating legacy/fixture records.
+    // Compare against the server catalog after applying the same deterministic
+    // numbering; never ignore actual catalog edits, prices or item identities.
+    function redemptionMgmtMatchesRemote() {
+      if (!lastRemoteState || !lastRemoteState.mgmt) return false;
+      const normalized = mergeWithDefaults(sanitizeForFirebase(lastRemoteState));
+      return sameRemoteValue(appState.mgmt,normalized.mgmt);
+    }
     async function confirmRedemption() {
       const mode = redemptionMode();
       const blockers = [];
@@ -3671,7 +3679,7 @@
       if (pendingCollectionWrites.has('mgmt')) blockers.push('Verwaltung wird noch übertragen');
       if (lastRemoteState && !sameRemoteValue(appState.rewardLedger,lastRemoteState.rewardLedger))
         blockers.push('Lokaler Punktestand weicht vom Server ab');
-      if (lastRemoteState && !sameRemoteValue(appState.mgmt,lastRemoteState.mgmt))
+      if (lastRemoteState && !redemptionMgmtMatchesRemote())
         blockers.push('Lokale Verwaltung weicht vom Server ab');
       if (!testAuthUser) blockers.push('Firebase-Anmeldung fehlt');
       else if (testAuthRole !== currentRole)
@@ -3695,7 +3703,7 @@
       if (redemptionMode() !== mode || pendingCollectionWrites.has('rewardLedger') ||
           pendingCollectionWrites.has('mgmt') ||
           !sameRemoteValue(appState.rewardLedger,lastRemoteState.rewardLedger) ||
-          !sameRemoteValue(appState.mgmt,lastRemoteState.mgmt)) return;
+          !redemptionMgmtMatchesRemote()) return;
       redemptionPending = true;
       renderRewards();
       const id = 'redemption:'+Date.now()+':'+Math.random().toString(36).slice(2,12);
