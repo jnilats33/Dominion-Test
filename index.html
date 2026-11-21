@@ -644,6 +644,7 @@
               </div>
               <input id="mgmt-image-file" type="file" accept="image/*" class="hidden" onchange="handleMgmtImageSelect(event)" />
               <input id="mgmt-image-camera" type="file" accept="image/*" capture="environment" class="hidden" onchange="handleMgmtImageSelect(event)" />
+              <div id="mgmt-gallery" class="hidden"></div>
               <div id="mgmt-image-preview" class="hidden">
                 <img id="mgmt-image-preview-img" alt="Bildvorschau" class="rounded-xl max-h-48 w-auto border border-slate-700" />
               </div>
@@ -1151,6 +1152,7 @@
     let calendarEditingId = null;
     let pendingChatImage = null;
     let mgmtDraftImage = null;
+    let mgmtDraftGalleryId = null;
     let mgmtEditingItemId = null;
     let mgmtImageRemoved = false;
     let mediaRecorder = null;
@@ -3377,6 +3379,7 @@
           context.fillRect(0, 0, canvas.width, canvas.height);
           context.drawImage(image, 0, 0, canvas.width, canvas.height);
           mgmtDraftImage = canvas.toDataURL('image/jpeg', 0.8);
+          mgmtDraftGalleryId = null;
           mgmtImageRemoved = false;
           document.getElementById('mgmt-image-preview-img').src = mgmtDraftImage;
           document.getElementById('mgmt-image-preview').classList.remove('hidden');
@@ -3395,6 +3398,7 @@
 
     function clearMgmtDraftImage() {
       mgmtDraftImage = null;
+      mgmtDraftGalleryId = null;
       mgmtImageRemoved = false;
       const preview = document.getElementById('mgmt-image-preview');
       const image = document.getElementById('mgmt-image-preview-img');
@@ -3887,6 +3891,58 @@
 
     setInterval(() => { if (currentRole && processTaskDeadlines()) refreshAllUI(); }, 30000);
 
+    const REWARD_GALLERY = {
+      belohnungen: [['film','🎬'],['geschenk','🎁'],['kerzen','🕯️'],['essen','🍰'],['musik','🎧'],['bad','🛁'],['reise','✈️'],['buch','📖'],['blumen','💐'],['sterne','🌟']],
+      strafen: [['hammer','🔨'],['uhr','⏳'],['blitz','⚡'],['kette','⛓️'],['schloss','🔒'],['glocke','🔔'],['schild','🛡️'],['ziel','🎯'],['karte','🃏'],['waage','⚖️']]
+    };
+    function galleryImage(cat, id) {
+      const options = REWARD_GALLERY[cat] || [];
+      const index = options.findIndex(entry => entry[0] === id);
+      if (index < 0) return '';
+      const emoji = options[index][1];
+      const punishment = cat === 'strafen';
+      const svg = '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 160 160">' +
+        '<defs><radialGradient id="bg"><stop stop-color="' + (punishment ? '#842b36' : '#745019') +
+        '"/><stop offset="1" stop-color="#11121d"/></radialGradient></defs>' +
+        '<rect width="160" height="160" rx="18" fill="url(#bg)"/>' +
+        '<path d="M15 30L44 45M115 19L105 49M12 115L42 104M120 120L145 142" stroke="' +
+        (punishment ? '#ef6673' : '#e8b95c') + '" stroke-width="5" opacity=".7"/>' +
+        '<text x="80" y="105" text-anchor="middle" font-size="76">' + emoji + '</text>' +
+        '<rect x="5" y="5" width="150" height="150" rx="14" fill="none" stroke="#e8b95c" stroke-width="3"/></svg>';
+      return 'data:image/svg+xml;charset=utf-8,' + encodeURIComponent(svg);
+    }
+    function rewardImage(item, cat) {
+      return item.imgUrl || (item.galleryImageId ? galleryImage(cat,item.galleryImageId) : '');
+    }
+    function chooseRewardGallery(id) {
+      if (!['belohnungen','strafen'].includes(activeMgmtCategory)) return;
+      if (!(REWARD_GALLERY[activeMgmtCategory] || []).some(entry=>entry[0]===id)) return;
+      mgmtDraftImage = null; mgmtImageRemoved = false;
+      mgmtDraftGalleryId = id;
+      const preview = document.getElementById('mgmt-image-preview');
+      const img = document.getElementById('mgmt-image-preview-img');
+      img.src = galleryImage(activeMgmtCategory,id);
+      preview.classList.remove('hidden');
+      renderRewardGallery();
+    }
+    function renderRewardGallery() {
+      const box = document.getElementById('mgmt-gallery');
+      if (!box) return;
+      const options = REWARD_GALLERY[activeMgmtCategory];
+      box.classList.toggle('hidden',!options);
+      if (!options) return;
+      box.innerHTML = '<p class="text-xs text-amber-200 mb-2">Illustration auswählen (ohne Auswahl: Zufallsmotiv)</p>' +
+        '<div class="grid grid-cols-5 gap-2">' + options.map(([id]) =>
+          '<button type="button" title="' + id + '" onclick="chooseRewardGallery(\'' + id +
+          '\')" class="rounded-lg border p-1 ' +
+          (mgmtDraftGalleryId === id ? 'border-amber-400 bg-amber-500/20' : 'border-slate-700') +
+          '"><img alt="' + id + '" src="' + galleryImage(activeMgmtCategory,id) +
+          '" class="w-full aspect-square rounded object-cover"></button>').join('') + '</div>';
+    }
+    function randomRewardGalleryId(cat) {
+      const entries = REWARD_GALLERY[cat] || [];
+      return entries.length ? entries[Math.floor(Math.random()*entries.length)][0] : null;
+    }
     function renderVerwaltung() {
       const visibleCats = MGMT_CATEGORIES.filter(cat => cat.id !== 'aufgaben' && hasPermission(cat.id, 'visible'));
       const subTabsEl = document.getElementById('verwaltung-subtabs');
@@ -3919,7 +3975,7 @@
       const canDelete = hasPermission(activeMgmtCategory, 'delete');
       const isEditing = !!mgmtEditingItemId;
       document.getElementById('mgmt-add-box').classList.toggle('hidden', !canAdd && !(isEditing && canEdit));
-      document.getElementById('mgmt-image-controls').classList.toggle('hidden', !(canAdd || (isEditing && canEdit)) || !['kleidung', 'toys'].includes(activeMgmtCategory));
+      document.getElementById('mgmt-image-controls').classList.toggle('hidden', !(canAdd || (isEditing && canEdit)) || !['kleidung', 'toys','belohnungen','strafen'].includes(activeMgmtCategory));
       document.getElementById('mgmt-points-wrap').classList.toggle('hidden', !['belohnungen','strafen'].includes(activeMgmtCategory));
       const bonus = rewardAmount(appState.rewardRules?.[activeMgmtCategory]);
       const hint = document.getElementById('mgmt-bonus-hint');
@@ -3930,6 +3986,7 @@
       document.getElementById('mgmt-submit-button').onclick = isEditing ? saveMgmtEdit : addMgmtItem;
       document.getElementById('mgmt-cancel-edit').classList.toggle('hidden', !isEditing);
 
+      renderRewardGallery();
       numberMgmtItems(appState);
       const items = appState.mgmt[activeMgmtCategory] || [];
       const listEl = document.getElementById('mgmt-items-list');
@@ -3954,7 +4011,7 @@
             </div>
             ${rewardCategory ? `<p class="text-xs text-amber-300">Punktwert: ${activeMgmtCategory === 'strafen' ? '−' : '+'}${rewardAmount(item.rewardPoints)}</p>` : ''}
             ${item.desc ? `<p class="text-xs text-slate-400 mt-1 break-words">${escapeHtml(item.desc)}</p>` : ''}
-            ${item.imgUrl ? `<img src="${escapeHtml(item.imgUrl)}" alt="${escapeHtml(item.title)}" class="rounded-xl max-h-56 w-auto mt-2 border border-slate-700" />` : ''}
+            ${rewardImage(item,activeMgmtCategory) ? `<img src="${escapeHtml(rewardImage(item,activeMgmtCategory))}" alt="${escapeHtml(item.title)}" class="rounded-xl max-h-56 w-auto mt-2 border border-slate-700" />` : ''}
           </div>
           <div class="flex items-center gap-1.5 shrink-0">
             ${canEdit ? `<button onclick="editMgmtItem('${activeMgmtCategory}', '${item.id}')" class="p-2 rounded-lg bg-amber-500/10 hover:bg-amber-500/25 text-amber-300 text-xs" title="Bearbeiten">✏️</button>` : ''}
@@ -3974,20 +4031,20 @@
       if (catId !== activeMgmtCategory || !hasPermission(catId, 'edit')) return;
       const item = (appState.mgmt[catId] || []).find(entry => entry.id === itemId);
       if (!item) return;
-      mgmtEditingItemId = itemId; mgmtDraftImage = null; mgmtImageRemoved = false;
+      mgmtEditingItemId = itemId; mgmtDraftImage = null; mgmtDraftGalleryId = item.galleryImageId || null; mgmtImageRemoved = false;
       document.getElementById('mgmt-title').value = item.title || '';
       document.getElementById('mgmt-desc').value = item.desc || '';
       document.getElementById('mgmt-points').value = rewardAmount(item.rewardPoints);
       const preview = document.getElementById('mgmt-image-preview');
       const previewImg = document.getElementById('mgmt-image-preview-img');
-      if (item.imgUrl && ['kleidung', 'toys'].includes(catId)) { previewImg.src = item.imgUrl; preview.classList.remove('hidden'); }
+      if (rewardImage(item,catId)) { previewImg.src = rewardImage(item,catId); preview.classList.remove('hidden'); }
       else { previewImg.src = ''; preview.classList.add('hidden'); }
       renderVerwaltung();
       document.getElementById('mgmt-add-box').scrollIntoView({ behavior: 'smooth', block: 'center' });
     }
 
     function removeMgmtImage() {
-      mgmtDraftImage = null; mgmtImageRemoved = true;
+      mgmtDraftImage = null; mgmtDraftGalleryId = null; mgmtImageRemoved = true;
       const preview = document.getElementById('mgmt-image-preview');
       const previewImg = document.getElementById('mgmt-image-preview-img');
       if (previewImg) previewImg.src = ''; if (preview) preview.classList.add('hidden');
@@ -4012,7 +4069,15 @@
       if (!title) { showToast('Bitte eine Bezeichnung eingeben.', 'error'); return; }
       const oldTitle = item.title || ''; item.title = title; item.desc = desc;
       if (['belohnungen','strafen'].includes(catId)) item.rewardPoints = rewardAmount(document.getElementById('mgmt-points').value);
-      if (['kleidung', 'toys'].includes(catId)) { if (mgmtDraftImage) item.imgUrl = mgmtDraftImage; else if (mgmtImageRemoved) delete item.imgUrl; }
+      if (['kleidung','toys','belohnungen','strafen'].includes(catId)) {
+        if (mgmtDraftImage) { item.imgUrl = mgmtDraftImage; delete item.galleryImageId; }
+        else if (mgmtDraftGalleryId) { item.galleryImageId = mgmtDraftGalleryId; delete item.imgUrl; }
+        else if (mgmtImageRemoved && ['belohnungen','strafen'].includes(catId)) {
+          item.galleryImageId = randomRewardGalleryId(catId); delete item.imgUrl;
+        } else if (mgmtImageRemoved) delete item.imgUrl;
+        if (['belohnungen','strafen'].includes(catId) && !rewardImage(item,catId))
+          item.galleryImageId = randomRewardGalleryId(catId);
+      }
       const catObj = MGMT_CATEGORIES.find(category => category.id === catId);
       logActivity('hat ' + (catObj ? catObj.singular : 'Eintrag') + ' bearbeitet: „' + oldTitle + '“ → „' + title + '“', 'verwaltung', catId, item.id);
       mgmtEditingItemId = null;
@@ -4034,7 +4099,9 @@
       appState.mgmtCounters[activeMgmtCategory] = next;
       const newItem = { id: 'mgmt-' + Date.now() + '-' + Math.random().toString(36).slice(2, 7), itemNumber: prefix + '-' + String(next).padStart(4, '0'), title, desc, done: false };
       if (['belohnungen','strafen'].includes(activeMgmtCategory)) newItem.rewardPoints = rewardAmount(document.getElementById('mgmt-points').value);
-      if (['kleidung', 'toys'].includes(activeMgmtCategory) && mgmtDraftImage) newItem.imgUrl = mgmtDraftImage;
+      if (['kleidung','toys','belohnungen','strafen'].includes(activeMgmtCategory) && mgmtDraftImage) newItem.imgUrl = mgmtDraftImage;
+      if (['belohnungen','strafen'].includes(activeMgmtCategory) && !mgmtDraftImage)
+        newItem.galleryImageId = mgmtDraftGalleryId || randomRewardGalleryId(activeMgmtCategory);
       if (!Array.isArray(appState.mgmt[activeMgmtCategory])) {
         appState.mgmt[activeMgmtCategory] = [];
       }
