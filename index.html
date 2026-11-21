@@ -6,7 +6,7 @@
   <meta name="theme-color" content="#0f1117" />
   <meta name="apple-mobile-web-app-capable" content="yes" />
   <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
-  <title>Dominion TEST – v2.8</title>
+  <title>Dominion TEST – v2.9</title>
   <script src="https://cdn.tailwindcss.com"></script>
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
@@ -1048,9 +1048,10 @@
         for (const item of items) {
           const value = typeof item.itemNumber === 'string' ? item.itemNumber : '';
           const parts = value.split('-');
-          if (parts.length === 2 && parts[0] === prefix && /^[0-9]+$/.test(parts[1]) && !used.has(value)) {
+          if ((parts.length === 2 && parts[0] === prefix && /^[0-9]+$/.test(parts[1]) && !used.has(value)) ||
+              (category === 'strafen' && /^S-TEST-[0-9]+$/.test(value) && !used.has(value))) {
             used.add(value);
-            next = Math.max(next, Number(parts[1]));
+            if (/^[0-9]+$/.test(parts[1])) next = Math.max(next, Number(parts[1]));
           } else {
             delete item.itemNumber;
           }
@@ -1382,6 +1383,46 @@
         fix.textContent = 'Strafennummern prüfen (nur lesen)';
         fix.addEventListener('click',()=>{backdrop.remove();inspectPenaltyNumbers();});
         panel.appendChild(fix);
+      }
+      if (productionSyncConflict && lastRemoteState && firebaseDbRef &&
+          location.hostname === 'jnilats33.github.io' &&
+          location.pathname.startsWith('/Dominion-Test/') &&
+          firebaseRoomPathPending === DEVELOPMENT_TEST_ROOM) {
+        const resolve = document.createElement('button');
+        resolve.type = 'button';
+        resolve.className = 'ml-2 mt-2 px-4 py-2 rounded-lg bg-emerald-700 text-white text-sm';
+        resolve.textContent = 'Konflikt abschließen – Serverdaten übernehmen';
+        resolve.addEventListener('click', async () => {
+          if (!confirm('Den lokalen Konfliktentwurf verwerfen und die vorhandenen Serverdaten übernehmen? Es werden KEINE Daten auf Firebase gelöscht oder geändert.')) return;
+          resolve.disabled = true;
+          try {
+            if (pendingCollectionWrites.size) throw new Error('Noch ausstehende Änderungen. Bitte später erneut versuchen.');
+            const snapshot = await firebaseDbRef.once('value');
+            const raw = snapshot.val();
+            if (!raw || !raw.mgmt || !raw.basics || !raw.permissions) throw new Error('Serverdaten nicht vollständig.');
+            const { chat: ignoredChat, chatV2: ignoredChatV2, ...remote } = raw;
+            const liveChat = appState.chat || [];
+            const nextState = mergeWithDefaults(remote);
+            nextState.chat = liveChat;
+            delete nextState.fcmToken;
+            // Resolve locally only. Never upload the conflict draft.
+            localStorage.removeItem(SYNC_CONFLICT_DRAFT_KEY);
+            productionSyncConflict = false;
+            productionRoomLoaded = true;
+            lastRemoteState = sanitizeForFirebase(remote);
+            appState = nextState;
+            saveStateLocalOnly();
+            updateSyncConflictReviewButton();
+            updateSyncIndicator(true);
+            backdrop.remove();
+            refreshAllUI();
+            showToast('Konflikt abgeschlossen. Serverdaten übernommen.', 'success');
+          } catch (error) {
+            resolve.disabled = false;
+            showToast('Konflikt nicht abgeschlossen: ' + error.message, 'error');
+          }
+        });
+        panel.appendChild(resolve);
       }
       backdrop.appendChild(panel);
       document.getElementById('sync-conflict-review-overlay')?.remove();
