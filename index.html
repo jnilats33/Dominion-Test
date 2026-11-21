@@ -3533,7 +3533,7 @@
       const pair = !!ev.groupId && document.getElementById('cal-edit-pair').checked;
       const targets = pair ? appState.kalender.filter(x => x.groupId === ev.groupId) : [ev];
       targets.forEach(x => {
-        x.title=data.title; x.date=data.date; x.time=data.time; x.endDate=data.endDate; x.endTime=data.endTime;
+        x.title=data.title; x.date=data.date; x.time=data.time; x.endDate=data.endDate; x.endTime=data.endTime; x.lastEditedBy=currentRole;
         if (x.owner === 'Daisy' && currentRole === 'Master' && !x.confirmed && x.id === ev.id) { x.pointsPlus=data.pointsPlus; x.pointsMinus=data.pointsMinus; delete x.points; }
       });
       closeCalendarDialog(); persistState(); refreshAllUI(); showToast('Termin aktualisiert.');
