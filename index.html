@@ -3912,7 +3912,16 @@
       return 'data:image/svg+xml;charset=utf-8,' + encodeURIComponent(svg);
     }
     function rewardImage(item, cat) {
-      return item.imgUrl || (item.galleryImageId ? galleryImage(cat,item.galleryImageId) : '');
+      if (item.imgUrl) return item.imgUrl;
+      if (item.galleryImageId) return galleryImage(cat,item.galleryImageId);
+      // Existing catalog entries get a stable visual fallback without migrating room data.
+      if (REWARD_GALLERY[cat]) {
+        const key = String(item.id || item.title || '');
+        let hash = 0;
+        for (let i = 0; i < key.length; i++) hash = ((hash * 31) + key.charCodeAt(i)) >>> 0;
+        return galleryImage(cat,REWARD_GALLERY[cat][hash % REWARD_GALLERY[cat].length][0]);
+      }
+      return '';
     }
     function chooseRewardGallery(id) {
       if (!['belohnungen','strafen'].includes(activeMgmtCategory)) return;
