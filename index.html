@@ -219,6 +219,9 @@
                 <span class="w-1.5 h-1.5 rounded-full bg-emerald-400"></span>
                 <span id="sync-status-label">Live</span>
               </span>
+              <button id="sync-recovery-test-button" type="button" onclick="recoverOverdueTaskTest()" hidden
+                class="px-2 py-0.5 rounded-lg border border-amber-500/50 text-amber-200 bg-amber-950/50 text-[10px] font-semibold"
+                title="TEST: geprüften Verspätungsvorgang atomar wiederherstellen">Verspätung reparieren</button>
               <button id="sync-fresh-check-button" type="button" onclick="inspectFreshConflictTest()" hidden
                 class="px-2 py-0.5 rounded-lg border border-sky-500/50 text-sky-200 bg-sky-950/50 text-[10px] font-semibold"
                 title="Konfliktentwurf mit frischem TEST-Serverstand vergleichen, nur lesen">Serverstand prüfen</button>
@@ -1373,6 +1376,10 @@
     function updateSyncConflictReviewButton() {
       const button = document.getElementById('sync-conflict-review-button');
       if (button) button.hidden = !productionSyncConflict;
+      const recoveryButton = document.getElementById('sync-recovery-test-button');
+      if (recoveryButton) recoveryButton.hidden = !productionSyncConflict ||
+        location.hostname !== 'jnilats33.github.io' ||
+        !location.pathname.startsWith('/Dominion-Test/');
       const freshButton = document.getElementById('sync-fresh-check-button');
       if (freshButton) freshButton.hidden = !productionSyncConflict ||
         location.hostname !== 'jnilats33.github.io' ||
@@ -1435,6 +1442,110 @@
       panel.append(title, field, actions);
       overlay.appendChild(panel);
       document.body.appendChild(overlay);
+    }
+
+    // Explicitly approved TEST-only recovery. Preserve the draft and conflict lock
+    // even after a successful write; unlock only through a separate verification.
+    async function recoverOverdueTaskTest() {
+      const button = document.getElementById('sync-recovery-test-button');
+      if (button) button.disabled = true;
+      let phase = 'Sicherheitsprüfung';
+      try {
+        if (location.hostname !== 'jnilats33.github.io' ||
+            !location.pathname.startsWith('/Dominion-Test/') ||
+            firebaseRoomPathPending !== DEVELOPMENT_TEST_ROOM ||
+            !firebaseDbRef || !testAuthUser || testAuthRole !== 'Master' ||
+            currentRole !== 'Master' || !productionSyncConflict ||
+            pendingCollectionWrites.size || recoveryPending)
+          throw new Error('TEST-Sicherheitsbedingungen nicht erfüllt.');
+        const draftText = localStorage.getItem(SYNC_CONFLICT_DRAFT_KEY);
+        const draft = JSON.parse(draftText || 'null');
+        if (!draft?.drafts?.mgmt?.aufgaben || !Array.isArray(draft.drafts.rewardLedger))
+          throw new Error('Konfliktentwurf unvollständig.');
+        const baseline = (await firebaseDbRef.once('value')).val();
+        const rawTasks = baseline?.mgmt?.aufgaben;
+        if (!Array.isArray(rawTasks) || rawTasks.length !== 6 ||
+            Number(baseline.mgmtCounters?.aufgaben) !== 5 ||
+            !Array.isArray(baseline.rewardLedger))
+          throw new Error('Serverbestand oder Zähler inzwischen verändert.');
+        const fresh = mergeWithDefaults(sanitizeForFirebase(baseline));
+        const localTasks = draft.drafts.mgmt.aufgaben;
+        const localLedger = draft.drafts.rewardLedger;
+        const localTask = localTasks.find(t => t?.title === 'Badge-Test 1');
+        const remoteTask = localTask && fresh.mgmt.aufgaben.find(t => t.id === localTask.id);
+        const rawTask = localTask && rawTasks.find(t => t.id === localTask.id);
+        const lateKey = localTask && 'task:' + localTask.id + ':late:' + (localTask.cycle || 0);
+        const extra = localLedger.filter(x => x?.id === lateKey);
+        const remoteKeys = new Set(baseline.rewardLedger.map(x => x?.id));
+        const normalizedTask = localTask && {...localTask, status:'open'};
+        if (normalizedTask) delete normalizedTask.history;
+        const otherTasksMatch = localTasks.length === fresh.mgmt.aufgaben.length &&
+          new Set(localTasks.map(t => t.id)).size === 6 &&
+          localTasks.every(t => t.id === localTask?.id ||
+            fresh.mgmt.aufgaben.some(v => v.id === t.id &&
+              sameConflictReviewValue('mgmt',{aufgaben:[t]},{aufgaben:[v]})));
+        const otherCategoriesMatch = ['kleidung','toys','strafen','belohnungen','regeln']
+          .every(k => sameRemoteValue(draft.drafts.mgmt[k],fresh.mgmt[k]));
+        const expectedNumbers = ['A-0001','A-0002','A-0003','A-0004','A-0005','A-0006'];
+        const normalizedNumbers = fresh.mgmt.aufgaben.map(t => t.itemNumber).sort();
+        const missingRaw = rawTasks.filter(t => !t?.itemNumber);
+        if (!localTask || !remoteTask || !rawTask || !otherTasksMatch ||
+            !otherCategoriesMatch || !sameConflictReviewValue('mgmt',
+              {aufgaben:[normalizedTask]},{aufgaben:[remoteTask]}) ||
+            localTask.status !== 'overdue' || remoteTask.status !== 'open' ||
+            !Array.isArray(localTask.history) || localTask.history.length !== 1 ||
+            localTask.history[0]?.event !== 'Frist überschritten' ||
+            extra.length !== 1 || extra[0].amount !== -5 ||
+            remoteKeys.has(lateKey) ||
+            !sameRemoteValue(localLedger.filter(x => x?.id !== lateKey), baseline.rewardLedger) ||
+            missingRaw.length !== 1 || !missingRaw[0]?.id ||
+            normalizedNumbers.join('|') !== expectedNumbers.join('|') ||
+            !sameRemoteValue(draft.drafts.activityFeed, fresh.activityFeed) ||
+            (draft.drafts.mgmtCounters &&
+              !sameRemoteValue(draft.drafts.mgmtCounters,fresh.mgmtCounters)))
+          throw new Error('Wiederherstellungsbedingungen nicht mehr vollständig erfüllt.');
+        if (!confirm('Dominion TEST: Genau den geprüften Verspätungsvorgang (Status, Verlauf, -5 Punkte) und die fehlende Aufgabennummer samt Zähler atomar auf Firebase speichern? Konfliktsperre bleibt zunächst aktiv.')) return;
+        if (localStorage.getItem(SYNC_CONFLICT_DRAFT_KEY) !== draftText ||
+            !productionSyncConflict || pendingCollectionWrites.size || recoveryPending)
+          throw new Error('Entwurf oder Schreibzustand hat sich verändert.');
+        phase = 'Atomare Servertransaktion';
+        const expected = sanitizeForFirebase(baseline);
+        const target = expected.mgmt.aufgaben.find(t => t.id === localTask.id);
+        target.status = 'overdue';
+        target.history = sanitizeForFirebase(localTask.history);
+        expected.rewardLedger.push(sanitizeForFirebase(extra[0]));
+        expected.mgmt.aufgaben.find(t => t.id === missingRaw[0].id).itemNumber =
+          fresh.mgmt.aufgaben.find(t => t.id === missingRaw[0].id).itemNumber;
+        expected.mgmtCounters.aufgaben = 6;
+        const result = await new Promise((resolve,reject) => {
+          firebaseDbRef.transaction(current => {
+            // Never write a full room against an unknown or stale baseline.
+            if (!current || !sameRemoteValue(current, baseline)) return;
+            return sanitizeForFirebase(expected);
+          }, (error, committed, snapshot) => {
+            if (error) reject(error); else resolve({committed,snapshot});
+          }, false);
+        });
+        if (!result.committed) throw new Error('Serverstand änderte sich oder Transaktion abgebrochen.');
+        phase = 'Ergebnis verifizieren';
+        if (!sameRemoteValue(result.snapshot?.val(), expected))
+          throw new Error('Transaktion bestätigt, Ergebnis nicht identisch. Nicht erneut ausführen.');
+        const verify = (await firebaseDbRef.once('value')).val();
+        if (!sameRemoteValue(verify, expected))
+          throw new Error('Serverstand nach Transaktion verändert. Nicht erneut ausführen.');
+        showTestDiagnosticReport('TEST – WIEDERHERSTELLUNG BESTÄTIGT\\n' +
+          'Badge-Test 1: overdue und Verlauf gespeichert\\n' +
+          'Verspätungsbuchung: -5 gespeichert\\n' +
+          'Aufgabennummer und Zähler: 6 gespeichert\\n' +
+          'Konfliktsperre und lokaler Entwurf bleiben vorerst erhalten.\\n' +
+          'Bitte diese Meldung mitteilen. Keine weiteren Aktionen ausführen.');
+      } catch (error) {
+        showTestDiagnosticReport('TEST – WIEDERHERSTELLUNG NICHT BESTÄTIGT\\n' +
+          'Schritt: ' + phase + '\\nGrund: ' + (error.message || String(error)) +
+          '\\nKonfliktsperre bleibt aktiv. Bitte Meldung mitteilen und nicht erneut klicken.');
+      } finally {
+        if (button) button.disabled = false;
+      }
     }
 
     // Read-only: fresh authoritative server snapshot versus preserved conflict draft.
