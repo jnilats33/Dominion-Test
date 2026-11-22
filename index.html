@@ -1808,8 +1808,17 @@
             for (const task of tasks) {
               const local = localById.get(task.id);
               const stripNumber = t => { const copy={...t}; delete copy.itemNumber; return copy; };
-              if (!sameRemoteValue(stripNumber(task),stripNumber(local)))
-                throw new Error('Inhaltliche Abweichung bei einer Aufgabe.');
+              const normalizeOptionalEmptyFields = t => {
+                const copy = stripNumber(t);
+                // Firebase omits null/empty optional fields. Ignore only these
+                // two known empty defaults; compare all other task data strictly.
+                if (Array.isArray(copy.history) && copy.history.length === 0) delete copy.history;
+                if (copy.reminderMinutes === null) delete copy.reminderMinutes;
+                return copy;
+              };
+              if (!sameRemoteValue(normalizeOptionalEmptyFields(task),
+                                   normalizeOptionalEmptyFields(local)))
+                throw new Error('Inhaltliche Abweichung bei einer Aufgabe (nicht nur leere Zusatzfelder).');
               if (task.itemNumber) {
                 if (task.itemNumber !== local.itemNumber || used.has(task.itemNumber))
                   throw new Error('Bestehende Aufgabennummer weicht ab.');
