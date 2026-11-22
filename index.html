@@ -1438,6 +1438,36 @@
             (sameConflictReviewValue(key, draft.drafts[key], fresh[key]) ? 'identisch' : 'ABWEICHUNG') :
             'nicht im Konfliktentwurf'));
         }
+        // Show only field names and value types, not potentially private contents.
+        const differingFields = (a, b) => {
+          if (!a || typeof a !== 'object' || !b || typeof b !== 'object')
+            return ['(unterschiedliche Struktur)'];
+          return [...new Set([...Object.keys(a), ...Object.keys(b)])]
+            .filter(k => !sameRemoteValue(a[k] ?? null, b[k] ?? null))
+            .map(k => k + ' [lokal:' +
+              (a[k] === undefined ? 'fehlt' : Array.isArray(a[k]) ? 'Liste(' + a[k].length + ')' : typeof a[k]) +
+              ', Server:' +
+              (b[k] === undefined ? 'fehlt' : Array.isArray(b[k]) ? 'Liste(' + b[k].length + ')' : typeof b[k]) + ']');
+        };
+        const localBadge = [...localById.values()].find(t => t.title === 'Badge-Test 1');
+        const serverBadge = localBadge && serverById.get(localBadge.id);
+        if (localBadge && serverBadge)
+          lines.push('Badge-Test 1 – abweichende Felder: ' +
+            (differingFields(localBadge, serverBadge).join(', ') || '(nur Normalisierungsunterschied)'));
+        const localLedger = draft.drafts.rewardLedger;
+        const remoteLedger = fresh.rewardLedger;
+        lines.push('rewardLedger – Struktur: lokal=' +
+          (Array.isArray(localLedger) ? 'Liste(' + localLedger.length + ')' : typeof localLedger) +
+          ', Server=' + (Array.isArray(remoteLedger) ? 'Liste(' + remoteLedger.length + ')' : typeof remoteLedger));
+        if (Array.isArray(localLedger) && Array.isArray(remoteLedger)) {
+          const lid = new Set(localLedger.map(x => x?.id).filter(Boolean));
+          const sid = new Set(remoteLedger.map(x => x?.id).filter(Boolean));
+          lines.push('rewardLedger – nur lokale IDs: ' + [...lid].filter(id => !sid.has(id)).length +
+            ', nur Server-IDs: ' + [...sid].filter(id => !lid.has(id)).length);
+          if (localLedger.length === remoteLedger.length)
+            lines.push('rewardLedger – abweichende Positionen: ' +
+              localLedger.filter((x, i) => !sameRemoteValue(x, remoteLedger[i])).length);
+        }
         lines.push('KEINE DATEN GESCHRIEBEN. Konfliktsperre unverändert.');
         alert(lines.join('\n'));
       } catch (error) {
