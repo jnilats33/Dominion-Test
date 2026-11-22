@@ -5283,8 +5283,12 @@
       document.getElementById('task-minus').value = 0;
       updateTaskForm();
     }
-    function saveTask() {
+    // New tasks must be committed together with their number, counter and activity.
+    // Existing task edits retain their previous path until separately reviewed.
+    let taskCreationPending = false;
+    async function saveTask() {
       if (currentRole !== 'Master' && (!hasPermission('aufgaben', 'add') || document.getElementById('task-kind').value !== 'personal')) return;
+      if (taskCreationPending) return;
       const title = document.getElementById('task-title').value.trim();
       const desc = document.getElementById('task-desc').value.trim();
       const assignee = document.getElementById('task-assignee').value;
@@ -5297,10 +5301,90 @@
       const task = editingTaskId ? tasks.find(t => t.id === editingTaskId) : null;
       if (editingTaskId && (!task || currentRole !== 'Master' || task.status !== 'open')) return;
       const values = { title, desc, assignee, deadline, reminderMinutes, taskKind: kind, plusPoints: kind === 'reward' ? rewardAmount(document.getElementById('task-plus').value) : 0, minusPoints: kind === 'reward' ? rewardAmount(document.getElementById('task-minus').value) : 0 };
-      if (task) Object.assign(task, values);
-      else tasks.unshift({ id: 'task-' + Date.now() + '-' + Math.random().toString(36).slice(2, 7), taskV26: true, status: 'open', cycle: 0, history: [], done: false, createdBy: currentRole, ...values });
-      logActivity('hat Aufgabe angelegt/bearbeitet: „' + title + '“', 'aufgaben');
-      closeTaskDialog(); persistState(); refreshAllUI(); showToast('Aufgabe gespeichert.');
+      if (task) {
+        Object.assign(task, values);
+        logActivity('hat Aufgabe angelegt/bearbeitet: „' + title + '“', 'aufgaben');
+        closeTaskDialog(); persistState(); refreshAllUI(); showToast('Aufgabe gespeichert.');
+        return;
+      }
+      // Never fall back to local-only creation or independent collection writes.
+      if (location.hostname !== 'jnilats33.github.io' ||
+          !location.pathname.startsWith('/Dominion-Test/') ||
+          firebaseRoomPathPending !== DEVELOPMENT_TEST_ROOM ||
+          !firebaseDbRef || !productionRoomLoaded || productionSyncConflict ||
+          isApplyingRemoteUpdate || recoveryPending || deadlineTransactionPending ||
+          pendingCollectionWrites.size || !lastRemoteState || !lastRemoteRawState ||
+          !testAuthUser || testAuthRole !== currentRole ||
+          !sameRemoteValue(appState.mgmt,lastRemoteState.mgmt) ||
+          !sameRemoteValue(appState.mgmtCounters,lastRemoteState.mgmtCounters) ||
+          !sameRemoteValue(appState.activityFeed,lastRemoteState.activityFeed)) {
+        showToast('Aufgabe nicht angelegt: Synchronisation erst prüfen.', 'error');
+        return;
+      }
+      taskCreationPending = true;
+      const button = document.getElementById('task-save-btn');
+      if (button) button.disabled = true;
+      const roomRef = firebaseDbRef;
+      const stamp = Date.now();
+      const taskId = 'task-' + stamp + '-' + Math.random().toString(36).slice(2,7);
+      const activityId = 'act-' + stamp + '-' + Math.random().toString(36).slice(2,6);
+      const actorRole = currentRole;
+      const actorName = getDisplayName(actorRole);
+      try {
+        const baseline = (await roomRef.once('value')).val();
+        if (!baseline || roomRef !== firebaseDbRef || productionSyncConflict ||
+            !productionRoomLoaded || pendingCollectionWrites.size ||
+            !sameRemoteValue(baseline.mgmt,lastRemoteRawState.mgmt) ||
+            !sameRemoteValue(baseline.mgmtCounters,lastRemoteRawState.mgmtCounters) ||
+            !sameRemoteValue(baseline.activityFeed,lastRemoteRawState.activityFeed))
+          throw new Error('Serverstand inzwischen verändert. Bitte erneut prüfen.');
+        const rawTasks = baseline.mgmt?.aufgaben;
+        const counter = Number(baseline.mgmtCounters?.aufgaben);
+        if (!Array.isArray(rawTasks) || !Number.isSafeInteger(counter) || counter < 0 ||
+            !Array.isArray(baseline.activityFeed))
+          throw new Error('Server-Aufgaben, Zähler oder Verlauf nicht vollständig.');
+        const numbers = rawTasks.map(t=>t?.itemNumber);
+        const ids = rawTasks.map(t=>t?.id);
+        if (new Set(ids).size !== ids.length || ids.some(id=>!id) ||
+            new Set(numbers).size !== numbers.length ||
+            numbers.some(n=>typeof n !== 'string' || !/^A-[0-9]+$/.test(n)) ||
+            Math.max(0,...numbers.map(n=>Number(n.slice(2)))) !== counter)
+          throw new Error('Aufgabennummern und Zähler sind nicht konsistent.');
+        const newNumber = 'A-' + String(counter+1).padStart(4,'0');
+        const newTask = {id:taskId,itemNumber:newNumber,taskV26:true,status:'open',
+          cycle:0,history:[],done:false,createdBy:actorRole,...values};
+        const activity = {id:activityId,actorRole,actorName,
+          action:'hat Aufgabe angelegt/bearbeitet: „'+title+'“',
+          targetTab:'aufgaben',targetSubCategory:null,permissionKey:'aufgaben',
+          targetItemId:null,timestamp:stamp};
+        const committed = await new Promise((resolve,reject)=>{
+          roomRef.transaction(current=>{
+            if (!current || !sameRemoteValue(current.mgmt,baseline.mgmt) ||
+                !sameRemoteValue(current.mgmtCounters,baseline.mgmtCounters) ||
+                !sameRemoteValue(current.activityFeed,baseline.activityFeed) ||
+                !sameRemoteValue(current.rewardLedger,baseline.rewardLedger) ||
+                !sameRemoteValue(current.deletedRewardKeys,baseline.deletedRewardKeys))
+              return;
+            const next = sanitizeForFirebase(current);
+            if (next.mgmt.aufgaben.some(t=>t?.id===taskId || t?.itemNumber===newNumber) ||
+                next.activityFeed.some(e=>e?.id===activityId)) return;
+            next.mgmt.aufgaben.unshift(newTask);
+            next.mgmtCounters.aufgaben = counter+1;
+            next.activityFeed.unshift(activity);
+            next.activityFeed = next.activityFeed.slice(0,100);
+            return next;
+          },(error,done)=>error ? reject(error) : resolve(done),false);
+        });
+        if (!committed) throw new Error('Transaktion nicht bestätigt; keine Aufgabe lokal angelegt.');
+        closeTaskDialog();
+        showToast('Aufgabe '+newNumber+' atomar gespeichert.');
+      } catch(error) {
+        console.warn('TEST: atomare Aufgabenanlage fehlgeschlagen',error);
+        showToast('Aufgabe nicht angelegt: '+(error?.message || String(error)), 'error');
+      } finally {
+        taskCreationPending = false;
+        if (button) button.disabled = false;
+      }
     }
     function editTask(id) {
       if (currentRole !== 'Master') return;
