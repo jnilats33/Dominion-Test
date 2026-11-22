@@ -1682,6 +1682,52 @@
             }
             if (saved.drafts.mgmtCounters)
               inspect('Zähler',saved.drafts.mgmtCounters,normalized.mgmtCounters);
+            lines.push('--- Fehlende Felder und Zähler (gezielt, nur lesen) ---');
+            const reportKeys = (label,local,remote) => {
+              if (!local || !remote || typeof local !== 'object' || typeof remote !== 'object') {
+                lines.push(label+': Vergleich nicht möglich'); return;
+              }
+              const lk=Object.keys(local), rk=Object.keys(remote);
+              const onlyLocal=lk.filter(k=>!Object.prototype.hasOwnProperty.call(remote,k));
+              const onlyRemote=rk.filter(k=>!Object.prototype.hasOwnProperty.call(local,k));
+              lines.push(label+' nur lokal vorhandene Feldnamen: '+(onlyLocal.join(', ')||'keine'));
+              lines.push(label+' nur auf Server vorhandene Feldnamen: '+(onlyRemote.join(', ')||'keine'));
+              for (const k of onlyLocal) {
+                const v=local[k];
+                lines.push(label+'.'+k+' lokal: '+(v===null?'null':Array.isArray(v)?'Liste ('+v.length+')':typeof v)+
+                  (v===null?' (leer)':''));
+              }
+            };
+            if (Array.isArray(draftTasks)) {
+              const byId = new Map(normalized.mgmt.aufgaben.map(t=>[t.id,t]));
+              draftTasks.forEach((task,i)=>{
+                const remote=byId.get(task.id);
+                if(remote && !sameRemoteValue(task,remote)) reportKeys('Aufgabe '+(i+1),task,remote);
+              });
+            }
+            if (Array.isArray(localFeed) && Array.isArray(serverFeed)) {
+              const identity=x=>String(x?.id??'')||JSON.stringify([x?.timestamp,x?.type]);
+              const groups=new Map();
+              for(const item of serverFeed) {
+                const k=identity(item);
+                if(!groups.has(k)) groups.set(k,[]);
+                groups.get(k).push(item);
+              }
+              localFeed.forEach((item,i)=>{
+                const group=groups.get(identity(item));
+                if(!group?.length)return;
+                const other=group.shift();
+                if(!sameRemoteValue(item,other))reportKeys('Aktivität '+(i+1),item,other);
+              });
+            }
+            const localCounters=saved.drafts.mgmtCounters||{};
+            const remoteCounters=normalized.mgmtCounters||{};
+            for(const key of new Set([...Object.keys(localCounters),...Object.keys(remoteCounters)])) {
+              if(!sameRemoteValue(localCounters[key],remoteCounters[key]))
+                lines.push('Zähler '+key+': lokal '+String(localCounters[key]??'fehlt')+
+                  ' / normalisierter Server '+String(remoteCounters[key]??'fehlt')+
+                  ' / roher Server '+String(raw.mgmtCounters?.[key]??'fehlt'));
+            }
             lines.push('KEINE DATEN GESCHRIEBEN. KONFLIKTSPERRE BLEIBT AKTIV.');
             const report = lines.join('\n');
             const overlay = document.createElement('div');
