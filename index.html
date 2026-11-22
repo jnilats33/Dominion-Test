@@ -1523,6 +1523,23 @@
         });
         panel.appendChild(restoreTask);
       }
+      if (productionSyncConflict && firebaseDbRef && testAuthUser &&
+          testAuthRole === 'Master' && currentRole === 'Master' &&
+          location.hostname === 'jnilats33.github.io' &&
+          location.pathname.startsWith('/Dominion-Test/') &&
+          firebaseRoomPathPending === DEVELOPMENT_TEST_ROOM) {
+        const restore = document.createElement('button');
+        restore.type = 'button';
+        restore.className = 'ml-2 mt-2 px-4 py-2 rounded-lg border border-amber-500 text-amber-200 text-sm';
+        restore.textContent = 'Push-Test 4 gezielt wiederherstellen';
+        restore.addEventListener('click', async () => {
+          if (!confirm('Nur Push-Test 4 in den isolierten TEST-Raum übertragen? Die Konfliktsperre bleibt bestehen.')) return;
+          restore.disabled = true;
+          try { await restorePushTest4Safely(); }
+          finally { restore.disabled = false; }
+        });
+        panel.appendChild(restore);
+      }
       if (recoveryCandidate()) {
         const recover = document.createElement('button');
         recover.type = 'button';
@@ -1583,6 +1600,80 @@
       backdrop.appendChild(panel);
       document.getElementById('sync-conflict-review-overlay')?.remove();
       document.body.appendChild(backdrop);
+    }
+
+    // TEST-only atomic root transaction: append exactly one missing task and
+    // advance its counter; never replace other collections or unlock drafts.
+    async function restorePushTest4Safely() {
+      if (!productionSyncConflict || !firebaseDbRef || !testAuthUser ||
+          testAuthRole !== 'Master' || currentRole !== 'Master' ||
+          location.hostname !== 'jnilats33.github.io' ||
+          !location.pathname.startsWith('/Dominion-Test/') ||
+          firebaseRoomPathPending !== DEVELOPMENT_TEST_ROOM ||
+          pendingCollectionWrites.size || recoveryPending) {
+        alert('Wiederherstellung gesperrt: Sicherheitsbedingungen nicht erfüllt.');
+        return;
+      }
+      recoveryPending = true;
+      let failure = 'Unbekannte Abweichung';
+      try {
+        const draft = JSON.parse(localStorage.getItem(SYNC_CONFLICT_DRAFT_KEY) || 'null');
+        const localTasks = draft?.drafts?.mgmt?.aufgaben;
+        if (!Array.isArray(localTasks)) throw new Error('Lokaler Konfliktentwurf fehlt.');
+        const matches = localTasks.filter(t => t?.id === 'task-1795361950892-zvm0g');
+        if (matches.length !== 1 || matches[0].title !== 'Push-Test 4' ||
+            matches[0].itemNumber !== 'A-0004') throw new Error('Gesicherte Aufgabe stimmt nicht überein.');
+        const task = sanitizeForFirebase(matches[0]);
+        // Fetch live state first, then compare it inside the transaction on every retry.
+        const baseline = (await firebaseDbRef.once('value')).val();
+        if (!baseline || !Array.isArray(baseline.mgmt?.aufgaben))
+          throw new Error('Serverdaten unvollständig.');
+        const originalTasks = baseline.mgmt.aufgaben;
+        const originalCounters = baseline.mgmtCounters || {};
+        const ids = new Set(originalTasks.map(t => t.id));
+        if (originalTasks.length !== 3 || ids.size !== 3 ||
+            ids.has(task.id) || localTasks.filter(t => !ids.has(t.id)).length !== 1 ||
+            originalTasks.some(t => !localTasks.some(l => l.id === t.id)))
+          throw new Error('Aufgabenbestand weicht von der geprüften Vorschau ab.');
+        const normalized = mergeWithDefaults(sanitizeForFirebase(baseline));
+        const numbers = normalized.mgmt.aufgaben.map(t => t.itemNumber);
+        if (new Set(numbers).size !== 3 ||
+            !['A-0001','A-0002','A-0003'].every(n => numbers.includes(n)) ||
+            Number(originalCounters.aufgaben) !== 1)
+          throw new Error('Aufgabennummern oder Zähler haben sich verändert.');
+        const result = await new Promise((resolve,reject) => {
+          firebaseDbRef.transaction(current => {
+            if (!current) { failure = 'Transaktionscache leer'; return; }
+            if (!sameRemoteValue(current.mgmt?.aufgaben,originalTasks) ||
+                !sameRemoteValue(current.mgmtCounters || {},originalCounters)) {
+              failure = 'Aufgaben oder Zähler zwischenzeitlich geändert'; return;
+            }
+            // Preserve every other field from the current transaction state.
+            const next = sanitizeForFirebase(current);
+            next.mgmt.aufgaben.push(task);
+            next.mgmtCounters = next.mgmtCounters || {};
+            next.mgmtCounters.aufgaben = 4;
+            return next;
+          },(error,committed,snapshot) => {
+            if (error) reject(error);
+            else resolve({committed,snapshot});
+          },false);
+        });
+        if (!result.committed) {
+          alert('NICHT übertragen: ' + failure + '. Konfliktsperre bleibt aktiv.');
+          return;
+        }
+        const saved = result.snapshot?.val();
+        if (!saved || !saved.mgmt?.aufgaben?.some(t => t.id === task.id) ||
+            Number(saved.mgmtCounters?.aufgaben) !== 4) {
+          alert('Schreibvorgang bestätigt, Ergebnis unklar. Bitte nichts weiter ändern.');
+          return;
+        }
+        alert('Push-Test 4 erfolgreich in TEST ergänzt. Zähler: 4. Konfliktsperre und Sicherung bleiben erhalten. Bitte Ergebnis melden.');
+      } catch (error) {
+        alert('Wiederherstellung abgebrochen: ' + (error.message || String(error)) +
+          '. Konfliktsperre bleibt bestehen.');
+      } finally { recoveryPending = false; }
     }
 
     // Explicit, one-record recovery for the isolated test room. No automatic
