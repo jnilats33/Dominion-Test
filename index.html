@@ -1919,9 +1919,18 @@
         resolve.type = 'button';
         resolve.className = 'ml-2 mt-2 px-4 py-2 rounded-lg bg-emerald-700 text-white text-sm';
         resolve.textContent = 'Konflikt abschließen – Serverdaten übernehmen';
+        // TEST-only persistent diagnostic. No Firebase writes or changes to guards.
+        const resolveDiagnostic = document.createElement('pre');
+        resolveDiagnostic.className = 'mt-3 p-3 text-xs whitespace-pre-wrap break-words rounded-lg border border-amber-500/40 bg-black/40 text-amber-100';
+        resolveDiagnostic.setAttribute('role', 'status');
+        resolveDiagnostic.setAttribute('aria-live', 'polite');
+        resolveDiagnostic.textContent = 'Abschlussdiagnose: Noch keine Prüfung gestartet.';
+        let resolvePhase = 'nicht gestartet';
         resolve.addEventListener('click', async () => {
           if (!confirm('Den lokalen Konfliktentwurf verwerfen und die vorhandenen Serverdaten übernehmen? Es werden KEINE Daten auf Firebase gelöscht oder geändert.')) return;
           resolve.disabled = true;
+          resolvePhase = 'Firebase-Serverstand erneut lesen';
+          resolveDiagnostic.textContent = 'Abschlussdiagnose: Prüfe … ' + resolvePhase;
           try {
             if (pendingCollectionWrites.size) throw new Error('Noch ausstehende Änderungen. Bitte später erneut versuchen.');
             const snapshot = await firebaseDbRef.once('value');
@@ -1938,6 +1947,8 @@
             const draft = JSON.parse(localStorage.getItem(SYNC_CONFLICT_DRAFT_KEY) || 'null');
             if (!draft?.drafts || typeof draft.drafts !== 'object')
               throw new Error('Konfliktentwurf fehlt oder ist nicht lesbar.');
+            resolvePhase = 'Konfliktentwurf und Aufgabenbestand vergleichen';
+            resolveDiagnostic.textContent = 'Abschlussdiagnose: Prüfe … ' + resolvePhase;
             const fresh = mergeWithDefaults(sanitizeForFirebase(raw));
             const localTasks = draft.drafts.mgmt?.aufgaben;
             const remoteTasks = fresh.mgmt?.aufgaben;
@@ -1968,6 +1979,8 @@
             if (remoteTasks.some(t=>!expectedNumbers.delete(t.itemNumber)) ||
                 expectedNumbers.size!==0)
               throw new Error('Aufgabennummern nicht eindeutig oder lückenlos.');
+            resolvePhase = 'Aktivitätsverlauf vergleichen';
+            resolveDiagnostic.textContent = 'Abschlussdiagnose: Prüfe … ' + resolvePhase;
             const localFeed=draft.drafts.activityFeed;
             const remoteFeed=fresh.activityFeed;
             if (!Array.isArray(localFeed) || !Array.isArray(remoteFeed) ||
@@ -1975,6 +1988,8 @@
                 localFeed.some((v,i)=>!sameRemoteValue(
                   omitKnownEmpty(v,'activity'),omitKnownEmpty(remoteFeed[i],'activity'))))
               throw new Error('Aktivitätsverlauf unterscheidet sich vom Server.');
+            resolvePhase = 'Weitere Entwurfsdaten vergleichen';
+            resolveDiagnostic.textContent = 'Abschlussdiagnose: Prüfe … ' + resolvePhase;
             const excluded=new Set(['chat','chatV2','firebase','fcmToken','version','mgmt','activityFeed']);
             for (const [key,value] of Object.entries(draft.drafts)) {
               if (excluded.has(key)) continue;
@@ -1985,6 +2000,8 @@
             if (categories.some(key=>!sameRemoteValue(
               draft.drafts.mgmt?.[key],fresh.mgmt?.[key])))
               throw new Error('Weitere Verwaltungskategorie weicht ab.');
+            resolvePhase = 'Geprüften Serverstand lokal übernehmen';
+            resolveDiagnostic.textContent = 'Abschlussdiagnose: Prüfe … ' + resolvePhase;
             const { chat: ignoredChat, chatV2: ignoredChatV2, ...remote } = raw;
             const liveChat = appState.chat || [];
             const nextState = mergeWithDefaults(remote);
@@ -2005,10 +2022,16 @@
             showToast('Konflikt abgeschlossen. Serverdaten übernommen.', 'success');
           } catch (error) {
             resolve.disabled = false;
-            showToast('Konflikt nicht abgeschlossen: ' + error.message, 'error');
+            const detail = error instanceof Error ? error.message : String(error);
+            resolveDiagnostic.textContent = 'Abschluss NICHT erfolgt.\nPrüfschritt: ' +
+              resolvePhase + '\nGrund: ' + detail +
+              '\nKonfliktsperre bleibt bestehen. Bitte diese Diagnose kopieren.';
+            console.warn('TEST-Konfliktabschluss abgebrochen:', resolvePhase, detail);
+            showToast('Konflikt nicht abgeschlossen: ' + detail, 'error');
           }
         });
         panel.appendChild(resolve);
+        panel.appendChild(resolveDiagnostic);
       }
       backdrop.appendChild(panel);
       document.getElementById('sync-conflict-review-overlay')?.remove();
