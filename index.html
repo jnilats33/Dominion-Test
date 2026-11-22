@@ -1975,8 +1975,19 @@
     }
 
     async function registerTestPushToken() {
-      // The test app must never register devices for production notifications.
-      return;
+      if (!testAuthUser || testAuthRole !== currentRole || !currentRole ||
+          !('Notification' in window) || Notification.permission !== 'granted') return;
+      const prefs = getDevicePrefs();
+      if (!prefs.fcmToken) return;
+      if (!prefs.pushDeviceId) {
+        prefs.pushDeviceId = Array.from(crypto.getRandomValues(new Uint8Array(24)), b => b.toString(16).padStart(2,'0')).join('');
+        saveDevicePrefs(prefs);
+      }
+      const result = await firebase.app().functions('europe-west1').httpsCallable('registerTestPushDevice')({
+        token:prefs.fcmToken,deviceId:prefs.pushDeviceId
+      });
+      if (result.data?.registered !== true) throw new Error('Test-Geräteregistrierung nicht bestätigt.');
+      setPushPermissionStatus('TEST Push registriert',true);
     }
 
     function setPushPermissionStatus(message, ok) {
