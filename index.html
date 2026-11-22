@@ -1542,6 +1542,49 @@
               ', Felder: ' + Object.keys(x).join(', '));
           }
         }
+        // Check whether a narrowly scoped recovery could preserve all other server data.
+        // This is a plan only: no writes and no automatic unlocking.
+        const lateKey = localBadge && 'task:' + localBadge.id + ':late:' + (localBadge.cycle || 0);
+        const lateLocal = Array.isArray(localLedger) && localLedger.filter(x => x?.id === lateKey);
+        const lateServer = Array.isArray(remoteLedger) && remoteLedger.filter(x => x?.id === lateKey);
+        const serverRawTask = localBadge && Array.isArray(raw.mgmt?.aufgaben) &&
+          raw.mgmt.aufgaben.find(t => t?.id === localBadge.id);
+        const otherTasksEqual = localById.size === serverById.size &&
+          [...localById].every(([id, task]) => id === localBadge?.id ||
+            (serverById.has(id) &&
+              sameConflictReviewValue('mgmt', {aufgaben:[task]}, {aufgaben:[serverById.get(id)]})));
+        const mgmtOtherCategoriesEqual = ['kleidung','toys','strafen','belohnungen','regeln']
+          .every(key => sameRemoteValue(draft.drafts.mgmt?.[key], fresh.mgmt?.[key]));
+        const localTaskBase = localBadge && {...localBadge, status: serverBadge?.status};
+        if (localTaskBase) delete localTaskBase.history;
+        const onlyStatusAndHistory = !!localBadge && !!serverBadge &&
+          sameConflictReviewValue('mgmt', {aufgaben:[localTaskBase]}, {aufgaben:[serverBadge]});
+        const localLedgerWithoutLate = Array.isArray(localLedger) && lateKey ?
+          localLedger.filter(x => x?.id !== lateKey) : null;
+        const ledgerOnlyLate = Array.isArray(localLedgerWithoutLate) &&
+          Array.isArray(remoteLedger) &&
+          sameRemoteValue(localLedgerWithoutLate, remoteLedger);
+        const expectedLateEvent = !!localBadge && localBadge.status === 'overdue' &&
+          serverBadge?.status === 'open' &&
+          Array.isArray(localBadge.history) && localBadge.history.length === 1 &&
+          localBadge.history[0]?.event === 'Frist überschritten' &&
+          Array.isArray(lateLocal) && lateLocal.length === 1 &&
+          lateLocal[0]?.amount === -5 &&
+          Array.isArray(lateServer) && lateServer.length === 0;
+        const counterRepairNeeded = Array.isArray(raw.mgmt?.aufgaben) &&
+          raw.mgmt.aufgaben.length === 6 && Number(raw.mgmtCounters?.aufgaben) === 5;
+        lines.push('--- VORSCHAU EINER GEZIELTEN WIEDERHERSTELLUNG ---');
+        lines.push('Nur Badge-Test 1 abweichend: ' + otherTasksEqual);
+        lines.push('Andere Verwaltungskategorien identisch: ' + mgmtOtherCategoriesEqual);
+        lines.push('Badge-Test 1 nur Status/Verlauf verändert: ' + onlyStatusAndHistory);
+        lines.push('Ledger nur um diese Verspätungsbuchung ergänzt: ' + ledgerOnlyLate);
+        lines.push('Verspätungsvorgang vollständig plausibel: ' + expectedLateEvent);
+        lines.push('Zähler 5 bei sechs Aufgaben: ' + counterRepairNeeded);
+        lines.push('Rohaufgabe vorhanden: ' + !!serverRawTask);
+        lines.push('Wiederherstellungskandidat: ' +
+          (otherTasksEqual && mgmtOtherCategoriesEqual && onlyStatusAndHistory &&
+           ledgerOnlyLate && expectedLateEvent && counterRepairNeeded && !!serverRawTask ?
+           'JA – weitere technische Prüfung erforderlich' : 'NEIN – manuell untersuchen'));
         lines.push('KEINE DATEN GESCHRIEBEN. Konfliktsperre unverändert.');
         showTestDiagnosticReport(lines.join('\n'));
       } catch (error) {
