@@ -1588,6 +1588,57 @@
                 (draftTasks.length===byId.size && draftTasks.every(t=>byId.has(t.id) &&
                   sameRemoteValue(withoutNumber(t),withoutNumber(byId.get(t.id))))));
             }
+            lines.push('--- Präzisionsprüfung (ohne private Inhalte) ---');
+            const kind = v => v === undefined ? 'fehlt' : v === null ? 'null' :
+              Array.isArray(v) ? 'Liste' : typeof v;
+            const describe = (a,b,prefix,depth=0) => {
+              if (sameRemoteValue(a,b)) return [];
+              if (depth >= 4 || a === null || b === null ||
+                  typeof a !== 'object' || typeof b !== 'object' ||
+                  Array.isArray(a) !== Array.isArray(b)) {
+                return [prefix+' ['+kind(a)+' / '+kind(b)+']'];
+              }
+              const keys = new Set([...Object.keys(a||{}),...Object.keys(b||{})]);
+              const differences = [];
+              for (const key of keys) {
+                if (sameRemoteValue(a?.[key],b?.[key])) continue;
+                // Field names only. Never report values or content.
+                differences.push(...describe(a?.[key],b?.[key],prefix+'.'+key,depth+1));
+              }
+              return differences.length ? differences : [prefix+' [Darstellungsunterschied]'];
+            };
+            if (Array.isArray(draftTasks)) {
+              const serverTasks = new Map(normalized.mgmt.aufgaben.map(t=>[t.id,t]));
+              let idx = 0;
+              for (const task of draftTasks) {
+                idx++;
+                const serverTask = serverTasks.get(task.id);
+                if (!serverTask) { lines.push('Aufgabe '+idx+': nicht auf Server'); continue; }
+                const differences = describe(task,serverTask,'Aufgabe '+idx);
+                if (differences.length) lines.push(...differences.slice(0,25));
+              }
+            }
+            if (Array.isArray(localFeed) && Array.isArray(serverFeed)) {
+              const identity = x => String(x?.id ?? '') || JSON.stringify([x?.timestamp,x?.type]);
+              const groups = new Map();
+              for (const item of serverFeed) {
+                const key=identity(item);
+                if(!groups.has(key)) groups.set(key,[]);
+                groups.get(key).push(item);
+              }
+              let idx=0;
+              for (const item of localFeed) {
+                idx++;
+                const group=groups.get(identity(item));
+                if (!group?.length) continue;
+                const other=group.shift();
+                if (!sameRemoteValue(item,other)) {
+                  lines.push('Aktivität '+idx+': '+describe(item,other,'Eintrag').slice(0,20).join(', '));
+                }
+              }
+            }
+            if (saved.drafts.mgmtCounters)
+              lines.push(...describe(saved.drafts.mgmtCounters,normalized.mgmtCounters,'Zähler').slice(0,20));
             lines.push('KEINE DATEN GESCHRIEBEN. KONFLIKTSPERRE BLEIBT AKTIV.');
             const report = lines.join('\n');
             const overlay = document.createElement('div');
