@@ -1312,6 +1312,31 @@
       }
     }
 
+    // Read-only comparison for known optional defaults in conflict diagnostics.
+    // Do not use this in persistence, transactions or automatic unlocking.
+    function sameConflictReviewValue(key, local, server) {
+      function normalize(value) {
+        const copy = JSON.parse(JSON.stringify(value));
+        if (key === 'activityFeed' && Array.isArray(copy)) {
+          for (const entry of copy) {
+            if (!entry || typeof entry !== 'object') continue;
+            for (const field of ['targetItemId', 'targetSubCategory']) {
+              if (entry[field] === null) delete entry[field];
+            }
+          }
+        }
+        if (key === 'mgmt' && copy && typeof copy === 'object' && Array.isArray(copy.aufgaben)) {
+          for (const task of copy.aufgaben) {
+            if (!task || typeof task !== 'object') continue;
+            if (Array.isArray(task.history) && task.history.length === 0) delete task.history;
+            if (task.reminderMinutes === null) delete task.reminderMinutes;
+          }
+        }
+        return copy;
+      }
+      return sameRemoteValue(normalize(local), normalize(server));
+    }
+
     // Read-only conflict review. No writes, no automatic resolution.
     function buildSyncConflictReview() {
       const raw = localStorage.getItem(SYNC_CONFLICT_DRAFT_KEY);
@@ -1326,7 +1351,7 @@
         const local = saved.drafts[key];
         const server = lastRemoteState && Object.prototype.hasOwnProperty.call(lastRemoteState,key)
           ? lastRemoteState[key] : null;
-        return {key, matchesServer:lastRemoteState ? sameRemoteValue(local,server) : null,
+        return {key, matchesServer:lastRemoteState ? sameConflictReviewValue(key,local,server) : null,
           local:JSON.parse(JSON.stringify(local === undefined ? null : local)),
           server:lastRemoteState ? JSON.parse(JSON.stringify(server)) : null};
       });
