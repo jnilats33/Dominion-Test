@@ -1500,7 +1500,7 @@
             !sameRemoteValue(localLedger.filter(x => x?.id !== lateKey), baseline.rewardLedger) ||
             missingRaw.length !== 1 || !missingRaw[0]?.id ||
             normalizedNumbers.join('|') !== expectedNumbers.join('|') ||
-            !sameRemoteValue(draft.drafts.activityFeed, fresh.activityFeed) ||
+            !sameConflictReviewValue('activityFeed', draft.drafts.activityFeed, fresh.activityFeed) ||
             (draft.drafts.mgmtCounters &&
               !sameRemoteValue(draft.drafts.mgmtCounters,fresh.mgmtCounters)))
           throw new Error('Wiederherstellungsbedingungen nicht mehr vollständig erfüllt.');
