@@ -62,6 +62,8 @@ exports.notifyTestChatV2 = onValueCreated({
   }
 
   const recipient = message.sender === 'Master' ? 'Daisy' : 'Master';
+  const chatPreference = await getDatabase().ref('pushPreferences/'+ROOM+'/'+recipient+'/chat').get();
+  if (chatPreference.val() === false) return;
   logger.info('test_push_message_received', { sender: message.sender, recipient });
 
   const devicesSnapshot = await getDatabase().ref(`pushDevices/${ROOM}/${recipient}`).get();
