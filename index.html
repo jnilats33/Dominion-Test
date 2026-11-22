@@ -1548,6 +1548,46 @@
                 serverKeys.filter(k=>!localKeys.includes(k)).length);
               lines.push('Gleiche Reihenfolge: '+(localKeys.join('|')===serverKeys.join('|')));
             } else lines.push('Mindestens eine Seite ist keine Liste.');
+            lines.push('--- Aktivitätsverlauf: Feldvergleich (ohne Inhalte) ---');
+            if (Array.isArray(localFeed) && Array.isArray(serverFeed)) {
+              const identity = x => String(x?.id ?? '') || JSON.stringify([x?.timestamp,x?.type]);
+              const remoteGroups = new Map();
+              for (const entry of serverFeed) {
+                const key = identity(entry);
+                if (!remoteGroups.has(key)) remoteGroups.set(key,[]);
+                remoteGroups.get(key).push(entry);
+              }
+              let equal = 0, changed = 0, missing = 0;
+              const changedFields = new Map();
+              for (const entry of localFeed) {
+                const group = remoteGroups.get(identity(entry));
+                if (!group?.length) { missing++; continue; }
+                const remoteEntry = group.shift();
+                if (sameRemoteValue(entry,remoteEntry)) { equal++; continue; }
+                changed++;
+                for (const field of fieldDiff(entry,remoteEntry))
+                  changedFields.set(field,(changedFields.get(field)||0)+1);
+              }
+              const extraRemote = [...remoteGroups.values()].reduce((sum,g)=>sum+g.length,0);
+              lines.push('Inhaltlich gleich: '+equal);
+              lines.push('Gleiche Identität, abweichende Felder: '+changed);
+              lines.push('Nur lokal / nur Server: '+missing+' / '+extraRemote);
+              lines.push('Abweichende Feldnamen (Anzahl): '+
+                ([...changedFields].map(([k,n])=>k+' ('+n+')').join(', ') || 'keine'));
+            }
+            lines.push('--- Aufgaben: Vergleich ohne Nummerierung ---');
+            if (Array.isArray(draftTasks)) {
+              const withoutNumber = t => {
+                if (!t || typeof t !== 'object') return t;
+                const copy = {...t};
+                delete copy.itemNumber;
+                return copy;
+              };
+              const byId = new Map(normalized.mgmt.aufgaben.map(t=>[t.id,t]));
+              lines.push('Alle Aufgaben ohne itemNumber gleich: '+
+                (draftTasks.length===byId.size && draftTasks.every(t=>byId.has(t.id) &&
+                  sameRemoteValue(withoutNumber(t),withoutNumber(byId.get(t.id))))));
+            }
             lines.push('KEINE DATEN GESCHRIEBEN. KONFLIKTSPERRE BLEIBT AKTIV.');
             const report = lines.join('\n');
             const overlay = document.createElement('div');
