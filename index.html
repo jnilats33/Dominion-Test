@@ -5826,6 +5826,9 @@
       loadState();
       updateLoginLabels();
       initFirebaseSync();
+      // Also initialize the TEST-only counter button on a clean reload,
+      // when there is no conflict and no conflict-state transition.
+      updateSyncConflictReviewButton();
     });
   </script>
 </body>
