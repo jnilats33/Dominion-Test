@@ -1518,6 +1518,30 @@
             lines.push('rewardLedger – abweichende Positionen: ' +
               localLedger.filter((x, i) => !sameRemoteValue(x, remoteLedger[i])).length);
         }
+        // Detail only for the proven divergent task and ledger entry; no free text.
+        if (localBadge && serverBadge) {
+          lines.push('Badge-Test 1 – Status lokal: ' + String(localBadge.status ?? '(fehlt)') +
+            ', Server: ' + String(serverBadge.status ?? '(fehlt)'));
+          const localHistory = Array.isArray(localBadge.history) ? localBadge.history : [];
+          const serverHistory = Array.isArray(serverBadge.history) ? serverBadge.history : [];
+          lines.push('Badge-Test 1 – Verlauf lokal: ' + localHistory.length +
+            ', Server: ' + serverHistory.length);
+          for (const h of localHistory.slice(0, 5)) {
+            lines.push('Lokaler Verlauf – Felder: ' + Object.keys(h || {}).join(', ') +
+              ', Zeit: ' + String(h?.timestamp ?? h?.at ?? '(nicht vorhanden)') +
+              ', Status: ' + String(h?.status ?? '(nicht vorhanden)'));
+          }
+        }
+        if (Array.isArray(localLedger) && Array.isArray(remoteLedger)) {
+          const remoteIds = new Set(remoteLedger.map(x => x?.id));
+          const extra = localLedger.filter(x => x?.id && !remoteIds.has(x.id));
+          for (const x of extra.slice(0, 5)) {
+            lines.push('Nur lokaler Ledger-Eintrag – ID: ' + String(x.id) +
+              ', Betrag: ' + String(x.amount ?? '(fehlt)') +
+              ', Zeit: ' + String(x.timestamp ?? '(fehlt)') +
+              ', Felder: ' + Object.keys(x).join(', '));
+          }
+        }
         lines.push('KEINE DATEN GESCHRIEBEN. Konfliktsperre unverändert.');
         showTestDiagnosticReport(lines.join('\n'));
       } catch (error) {
