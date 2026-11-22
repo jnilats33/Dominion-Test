@@ -1181,6 +1181,7 @@
     let productionRoomLoaded = false;
     let productionSyncConflict = false; // Latch: a later snapshot must not silently unlock writes.
     let lastRemoteState = null;
+    let lastRemoteRawState = null;
     let isApplyingRemoteUpdate = false;
     let messagingInstance = null;
     let testAuthUser = null;
@@ -1425,7 +1426,8 @@
             localStorage.removeItem(SYNC_CONFLICT_DRAFT_KEY);
             productionSyncConflict = false;
             productionRoomLoaded = true;
-            lastRemoteState = sanitizeForFirebase(remote);
+            lastRemoteRawState = sanitizeForFirebase(remote);
+            lastRemoteState = sanitizeForFirebase(nextState);
             appState = nextState;
             saveStateLocalOnly();
             updateSyncConflictReviewButton();
@@ -1753,7 +1755,10 @@
         const baseline = lastRemoteState[key] === undefined ? null : lastRemoteState[key];
         if (sameRemoteValue(value, baseline) || pendingCollectionWrites.has(key)) continue;
         const desired = sanitizeForFirebase(value);
-        const expected = sanitizeForFirebase(baseline);
+        // Preserve the exact Firebase baseline for the transaction precondition.
+        const rawBaseline = lastRemoteRawState && Object.prototype.hasOwnProperty.call(lastRemoteRawState, key)
+          ? lastRemoteRawState[key] : null;
+        const expected = sanitizeForFirebase(rawBaseline);
         const roomRef = firebaseDbRef;
         pendingCollectionWrites.set(key, {roomRef, desired});
         roomRef.child(key).transaction(current => {
@@ -1776,6 +1781,7 @@
           }
           if (roomRef !== firebaseDbRef) return;
           if (lastRemoteState) lastRemoteState[key] = sanitizeForFirebase(desired);
+          if (lastRemoteRawState) lastRemoteRawState[key] = sanitizeForFirebase(desired);
           // The local state may have changed while this write was in flight.
           // Never retry an external conflict automatically.
           if (!sameRemoteValue(appState[key], desired)) persistState();
@@ -2072,6 +2078,7 @@
       firebaseDbRef = firebase.database().ref('rooms/' + safeRoomPath);
       productionRoomLoaded = false;
       lastRemoteState = null;
+      lastRemoteRawState = null;
       appState.chat = []; // The previous chat is explicitly excluded from this release.
       saveStateLocalOnly();
       firebaseDbRef.child('chatV2').on('child_added', snapshot => {
@@ -2109,6 +2116,7 @@
           console.error('Produktiv-Snapshot unvollständig: Schreibzugriffe aus Sicherheitsgründen gesperrt.');
           productionRoomLoaded = false;
           lastRemoteState = null;
+          lastRemoteRawState = null;
           updateSyncIndicator(false);
           return;
         }
@@ -2158,7 +2166,8 @@
           }
           delete appState.fcmToken;
           appState.chat = liveChat;
-          lastRemoteState = sanitizeForFirebase(stateWithoutChats);
+          lastRemoteRawState = sanitizeForFirebase(stateWithoutChats);
+          lastRemoteState = sanitizeForFirebase(mergeWithDefaults(stateWithoutChats));
           productionRoomLoaded = !productionSyncConflict;
           updateSyncIndicator(!productionSyncConflict);
           saveStateLocalOnly();
