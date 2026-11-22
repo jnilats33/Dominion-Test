@@ -1462,6 +1462,84 @@
         });
         panel.appendChild(restore);
       }
+      if (productionSyncConflict && firebaseDbRef && testAuthUser &&
+          testAuthRole === 'Master' && currentRole === 'Master' &&
+          location.hostname === 'jnilats33.github.io' &&
+          location.pathname.startsWith('/Dominion-Test/') &&
+          firebaseRoomPathPending === DEVELOPMENT_TEST_ROOM) {
+        const audit = document.createElement('button');
+        audit.type = 'button';
+        audit.className = 'ml-2 mt-2 px-4 py-2 rounded-lg border border-sky-500 text-sky-200 text-sm';
+        audit.textContent = 'Abschlussprüfung nach Wiederherstellung (nur lesen)';
+        audit.addEventListener('click', async () => {
+          audit.disabled = true;
+          try {
+            const saved = JSON.parse(localStorage.getItem(SYNC_CONFLICT_DRAFT_KEY) || 'null');
+            if (!saved?.drafts || typeof saved.drafts !== 'object')
+              throw new Error('Konfliktentwurf nicht lesbar.');
+            const raw = (await firebaseDbRef.once('value')).val();
+            if (!raw?.mgmt || !Array.isArray(raw.mgmt.aufgaben))
+              throw new Error('Server-Verwaltung nicht vollständig.');
+            const normalized = mergeWithDefaults(sanitizeForFirebase(raw));
+            const tasks = raw.mgmt.aufgaben;
+            const targetId = 'task-1795361950892-zvm0g';
+            const restored = tasks.filter(t => t?.id === targetId);
+            const draftTasks = saved.drafts.mgmt?.aufgaben;
+            const localTask = Array.isArray(draftTasks) ? draftTasks.find(t=>t?.id===targetId) : null;
+            const lines = [
+              'TEST – Abschlussprüfung (NUR LESEN)',
+              'Serveraufgaben: ' + tasks.length,
+              'Push-Test 4 auf Server (Anzahl): ' + restored.length,
+              'Nummer: ' + (restored[0]?.itemNumber || 'fehlt'),
+              'Server-Aufgabenzähler: ' + String(raw.mgmtCounters?.aufgaben ?? 'fehlt'),
+              'Wiederhergestellte Aufgabe inhaltlich gleich: ' +
+                (restored.length===1 && !!localTask && sameRemoteValue(restored[0],localTask)),
+              '--- Konfliktentwurf gegenüber Server (normalisiert) ---'
+            ];
+            const forbidden = new Set(['chat','chatV2','firebase','fcmToken','version']);
+            for (const key of Object.keys(saved.drafts).filter(k=>!forbidden.has(k)).sort()) {
+              if (key === 'mgmt') {
+                for (const category of MGMT_CATEGORIES.map(c=>c.id)) {
+                  const local = saved.drafts.mgmt?.[category] || [];
+                  const remote = normalized.mgmt?.[category] || [];
+                  lines.push('mgmt.' + category + ': ' +
+                    (sameRemoteValue(local,remote) ? 'GLEICH' : 'UNTERSCHIEDLICH') +
+                    ' (' + local.length + ' / ' + remote.length + ')');
+                }
+              } else {
+                lines.push(key + ': ' +
+                  (sameRemoteValue(saved.drafts[key],normalized[key]) ? 'GLEICH' : 'UNTERSCHIEDLICH'));
+              }
+            }
+            lines.push('KEINE DATEN GESCHRIEBEN. KONFLIKTSPERRE BLEIBT AKTIV.');
+            const report = lines.join('\n');
+            const overlay = document.createElement('div');
+            overlay.className = 'fixed inset-0 z-[120] bg-black/90 flex items-center justify-center p-4';
+            const pane = document.createElement('section');
+            pane.className = 'bg-[#151923] border border-sky-500 rounded-xl p-5 w-full max-w-2xl text-slate-100';
+            const heading = document.createElement('h2');
+            heading.textContent = 'Abschlussprüfung – nur lesen';
+            heading.className = 'font-bold mb-3';
+            const pre = document.createElement('pre');
+            pre.className = 'text-xs whitespace-pre-wrap break-all max-h-[60vh] overflow-auto bg-black/30 p-3 rounded';
+            pre.textContent = report;
+            const copy = document.createElement('button');
+            copy.textContent = 'Bericht kopieren';
+            copy.className = 'mt-3 mr-3 px-3 py-2 rounded bg-sky-700';
+            copy.onclick = () => navigator.clipboard.writeText(report).then(()=>copy.textContent='Kopiert').catch(()=>copy.textContent='Bitte Text markieren');
+            const close = document.createElement('button');
+            close.textContent = 'Schließen';
+            close.className = 'mt-3 px-3 py-2 rounded border border-slate-600';
+            close.onclick = () => overlay.remove();
+            pane.append(heading,pre,copy,close);
+            overlay.appendChild(pane);
+            document.body.appendChild(overlay);
+          } catch(error) {
+            alert('Abschlussprüfung nicht möglich: ' + (error.message || String(error)));
+          } finally { audit.disabled = false; }
+        });
+        panel.appendChild(audit);
+      }
       if (recoveryCandidate()) {
         const recover = document.createElement('button');
         recover.type = 'button';
