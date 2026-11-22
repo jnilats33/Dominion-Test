@@ -1780,8 +1780,27 @@
             failWrite(new Error('Serverstand vor Transaktion geändert'));
             return;
           }
+          let transactionAttempts = 0;
           roomRef.child(key).transaction(current => {
-            if (!sameRemoteValue(current, expected)) return;
+            transactionAttempts++;
+            // The RTDB SDK can call the updater first with an empty local
+            // cache. A pre-read has already confirmed the exact server value.
+            // Submit the candidate so Firebase can compare/retry it against
+            // the authoritative server state; never bypass the comparison
+            // when Firebase supplies an actual non-null value.
+            if (current == null && expected != null && transactionAttempts === 1) {
+              console.info('Firebase transaction: initial empty cache for', key);
+              return desired;
+            }
+            if (!sameRemoteValue(current, expected)) {
+              console.warn('Firebase transaction baseline mismatch', {
+                collection: key,
+                attempt: transactionAttempts,
+                currentIsNull: current == null,
+                expectedIsNull: expected == null
+              });
+              return;
+            }
             return desired;
           }, (error, committed) => {
             if (error || !committed) {
