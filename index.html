@@ -219,6 +219,9 @@
                 <span class="w-1.5 h-1.5 rounded-full bg-emerald-400"></span>
                 <span id="sync-status-label">Live</span>
               </span>
+              <button id="sync-fresh-check-button" type="button" onclick="inspectFreshConflictTest()" hidden
+                class="px-2 py-0.5 rounded-lg border border-sky-500/50 text-sky-200 bg-sky-950/50 text-[10px] font-semibold"
+                title="Konfliktentwurf mit frischem TEST-Serverstand vergleichen, nur lesen">Serverstand prüfen</button>
               <button id="task-counter-check-button" type="button" onclick="inspectTaskCounterTest()" hidden
                 class="px-2 py-0.5 rounded-lg border border-sky-500/50 text-sky-200 bg-sky-950/50 text-[10px] font-semibold"
                 title="Aufgabennummern und Zähler in TEST nur lesen">Aufgabenzähler prüfen</button>
@@ -1370,6 +1373,10 @@
     function updateSyncConflictReviewButton() {
       const button = document.getElementById('sync-conflict-review-button');
       if (button) button.hidden = !productionSyncConflict;
+      const freshButton = document.getElementById('sync-fresh-check-button');
+      if (freshButton) freshButton.hidden = !productionSyncConflict ||
+        location.hostname !== 'jnilats33.github.io' ||
+        !location.pathname.startsWith('/Dominion-Test/');
       const counterButton = document.getElementById('task-counter-check-button');
       if (counterButton) counterButton.hidden = productionSyncConflict ||
         location.hostname !== 'jnilats33.github.io' ||
@@ -1378,6 +1385,67 @@
       if (repairButton) repairButton.hidden = productionSyncConflict ||
         location.hostname !== 'jnilats33.github.io' ||
         !location.pathname.startsWith('/Dominion-Test/');
+    }
+
+    // Read-only: fresh authoritative server snapshot versus preserved conflict draft.
+    async function inspectFreshConflictTest() {
+      const button = document.getElementById('sync-fresh-check-button');
+      if (button) button.disabled = true;
+      try {
+        if (location.hostname !== 'jnilats33.github.io' ||
+            !location.pathname.startsWith('/Dominion-Test/') ||
+            firebaseRoomPathPending !== DEVELOPMENT_TEST_ROOM ||
+            !firebaseDbRef || !testAuthUser || testAuthRole !== 'Master' ||
+            currentRole !== 'Master' || !productionSyncConflict)
+          throw new Error('TEST-Sicherheitsbedingungen nicht erfüllt.');
+        const draft = JSON.parse(localStorage.getItem(SYNC_CONFLICT_DRAFT_KEY) || 'null');
+        if (!draft?.drafts || typeof draft.drafts !== 'object')
+          throw new Error('Gesicherter Konfliktentwurf fehlt.');
+        const raw = (await firebaseDbRef.once('value')).val();
+        if (!raw?.mgmt || !raw?.basics || !raw?.permissions)
+          throw new Error('Frischer Serverstand unvollständig.');
+        const fresh = mergeWithDefaults(sanitizeForFirebase(raw));
+        const localTasks = draft.drafts.mgmt?.aufgaben;
+        const serverTasks = fresh.mgmt?.aufgaben;
+        const lines = ['TEST – FRISCHER SERVERSTAND (NUR LESEN)',
+          'Konfliktsperre: ' + (productionSyncConflict ? 'aktiv' : 'inaktiv'),
+          'Lokale Aufgaben: ' + (Array.isArray(localTasks) ? localTasks.length : 'keine Liste'),
+          'Server-Aufgaben: ' + (Array.isArray(serverTasks) ? serverTasks.length : 'keine Liste'),
+          'Roher Server-Aufgabenzähler: ' + String(raw.mgmtCounters?.aufgaben ?? '(fehlt)'),
+          'Normalisierter Server-Aufgabenzähler: ' + String(fresh.mgmtCounters?.aufgaben ?? '(fehlt)')];
+        const localById = new Map((Array.isArray(localTasks) ? localTasks : []).map(t => [t.id, t]));
+        const serverById = new Map((Array.isArray(serverTasks) ? serverTasks : []).map(t => [t.id, t]));
+        for (const name of ['Badge-Test 1', 'Badge-test 2']) {
+          const l = [...localById.values()].filter(t => t.title === name);
+          const v = [...serverById.values()].filter(t => t.title === name);
+          lines.push(name + ': lokal=' + l.length + ', Server=' + v.length +
+            ', gleiche IDs=' + (l.length === v.length &&
+              l.every(t => v.some(remote => remote.id === t.id))) +
+            ', gleiche Inhalte=' + (l.length === v.length &&
+              l.every(t => v.some(remote => remote.id === t.id &&
+                sameConflictReviewValue('mgmt', {aufgaben:[t]}, {aufgaben:[remote]})))));
+        }
+        lines.push('Alle Aufgaben-IDs gleich: ' +
+          (localById.size === serverById.size &&
+            [...localById.keys()].every(id => serverById.has(id))));
+        lines.push('Alle Aufgabeninhalte gleich: ' +
+          (localById.size === serverById.size &&
+            [...localById].every(([id,task]) => serverById.has(id) &&
+              sameConflictReviewValue('mgmt', {aufgaben:[task]}, {aufgaben:[serverById.get(id)]}))));
+        for (const key of ['mgmt', 'activityFeed', 'mgmtCounters', 'rewardLedger']) {
+          const present = Object.prototype.hasOwnProperty.call(draft.drafts, key);
+          lines.push(key + ': ' + (present ?
+            (sameConflictReviewValue(key, draft.drafts[key], fresh[key]) ? 'identisch' : 'ABWEICHUNG') :
+            'nicht im Konfliktentwurf'));
+        }
+        lines.push('KEINE DATEN GESCHRIEBEN. Konfliktsperre unverändert.');
+        alert(lines.join('\n'));
+      } catch (error) {
+        alert('TEST-Serverprüfung abgebrochen: ' + (error.message || String(error)) +
+          '\nKEINE DATEN GESCHRIEBEN.');
+      } finally {
+        if (button) button.disabled = false;
+      }
     }
 
     // TEST-only follow-up after conflict resolution. Reads a fresh server snapshot.
