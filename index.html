@@ -222,6 +222,9 @@
               <button id="task-counter-check-button" type="button" onclick="inspectTaskCounterTest()" hidden
                 class="px-2 py-0.5 rounded-lg border border-sky-500/50 text-sky-200 bg-sky-950/50 text-[10px] font-semibold"
                 title="Aufgabennummern und Zähler in TEST nur lesen">Aufgabenzähler prüfen</button>
+              <button id="task-counter-repair-button" type="button" onclick="repairTaskCounterTest()" hidden
+                class="px-2 py-0.5 rounded-lg border border-amber-500/50 text-amber-200 bg-amber-950/50 text-[10px] font-semibold"
+                title="TEST: Fehlende Nummer A-0005 und Zähler nach Sicherheitsprüfung reparieren">Aufgabenzähler reparieren</button>
               <button id="sync-conflict-review-button" type="button" onclick="openSyncConflictReview()" hidden
                 class="px-2 py-0.5 rounded-lg border border-rose-500/50 text-rose-200 bg-rose-950/50 text-[10px] font-semibold"
                 title="Ungespeicherte Änderungen ansehen">Konflikt prüfen</button>
@@ -1371,6 +1374,10 @@
       if (counterButton) counterButton.hidden = productionSyncConflict ||
         location.hostname !== 'jnilats33.github.io' ||
         !location.pathname.startsWith('/Dominion-Test/');
+      const repairButton = document.getElementById('task-counter-repair-button');
+      if (repairButton) repairButton.hidden = productionSyncConflict ||
+        location.hostname !== 'jnilats33.github.io' ||
+        !location.pathname.startsWith('/Dominion-Test/');
     }
 
     // TEST-only follow-up after conflict resolution. Reads a fresh server snapshot.
@@ -1406,11 +1413,78 @@
             ': ' + (numberedNumbers.slice().sort().join('|') === expected.sort().join('|')),
           'Konfliktsperre: ' + (productionSyncConflict ? 'aktiv' : 'inaktiv'),
           'KEINE DATEN GESCHRIEBEN.'
-        ].join('\\n');
+        ].join('\n');
         alert(report);
       } catch (error) {
         alert('TEST-Aufgabenzählerprüfung abgebrochen: ' + (error.message || String(error)) +
-          '\\nKEINE DATEN GESCHRIEBEN.');
+          '\nKEINE DATEN GESCHRIEBEN.');
+      } finally {
+        if (button) button.disabled = false;
+      }
+    }
+
+    // Explicit user-triggered TEST-only repair; guarded atomic root transaction.
+    async function repairTaskCounterTest() {
+      const button = document.getElementById('task-counter-repair-button');
+      if (button) button.disabled = true;
+      let phase = 'Sicherheitsprüfung';
+      try {
+        if (location.hostname !== 'jnilats33.github.io' ||
+            !location.pathname.startsWith('/Dominion-Test/') ||
+            firebaseRoomPathPending !== DEVELOPMENT_TEST_ROOM ||
+            !firebaseDbRef || !testAuthUser || testAuthRole !== 'Master' ||
+            currentRole !== 'Master' || productionSyncConflict ||
+            pendingCollectionWrites.size || recoveryPending)
+          throw new Error('TEST-Sicherheitsbedingungen nicht erfüllt oder Schreibvorgang aktiv.');
+        const baseline = (await firebaseDbRef.once('value')).val();
+        const tasks = baseline?.mgmt?.aufgaben;
+        if (!Array.isArray(tasks) || tasks.length !== 5 ||
+            Number(baseline.mgmtCounters?.aufgaben) !== 4)
+          throw new Error('Aufgabenanzahl oder Zähler nicht mehr wie geprüft.');
+        const missing = tasks.filter(t => !t?.itemNumber);
+        const numbered = tasks.filter(t => t?.itemNumber).map(t => t.itemNumber).sort();
+        if (missing.length !== 1 || !missing[0]?.id ||
+            new Set(tasks.map(t => t?.id)).size !== 5 ||
+            numbered.join('|') !== 'A-0001|A-0002|A-0003|A-0004')
+          throw new Error('IDs oder vorhandene Aufgabennummern weichen ab.');
+        const normalized = mergeWithDefaults(sanitizeForFirebase(baseline));
+        const normalizedMissing = normalized.mgmt.aufgaben.find(t => t.id === missing[0].id);
+        if (normalizedMissing?.itemNumber !== 'A-0005' ||
+            normalized.mgmtCounters?.aufgaben !== 5)
+          throw new Error('Normalisierung ergibt nicht A-0005 und Zähler 5.');
+        if (!confirm('Dominion TEST: Genau einer bestehenden Aufgabe A-0005 zuweisen und den Zähler von 4 auf 5 setzen? Alle übrigen Daten bleiben unverändert.')) return;
+        if (productionSyncConflict || pendingCollectionWrites.size || recoveryPending)
+          throw new Error('Zwischenzeitlich neuer Konflikt oder Schreibvorgang.');
+        phase = 'Atomare Firebase-Transaktion';
+        let rejection = 'Serverstand zwischenzeitlich verändert.';
+        const result = await new Promise((resolve,reject) => {
+          firebaseDbRef.transaction(current => {
+            if (!current ||
+                !sameRemoteValue(current.mgmt?.aufgaben, baseline.mgmt.aufgaben) ||
+                !sameRemoteValue(current.mgmtCounters, baseline.mgmtCounters)) return;
+            const next = sanitizeForFirebase(current);
+            const target = next.mgmt.aufgaben.find(t => t.id === missing[0].id);
+            if (!target || target.itemNumber) return;
+            target.itemNumber = 'A-0005';
+            next.mgmtCounters.aufgaben = 5;
+            return next;
+          }, (error,committed,snapshot) => {
+            if (error) reject(error); else resolve({committed,snapshot});
+          }, false);
+        });
+        if (!result.committed) throw new Error(rejection);
+        phase = 'Schreibergebnis prüfen';
+        const after = result.snapshot?.val();
+        const expected = sanitizeForFirebase(baseline);
+        expected.mgmt.aufgaben.find(t => t.id === missing[0].id).itemNumber = 'A-0005';
+        expected.mgmtCounters.aufgaben = 5;
+        if (!sameRemoteValue(after, expected))
+          throw new Error('Transaktion bestätigt, aber Ergebnis weicht ab. Bitte nicht wiederholen.');
+        alert('TEST-Reparatur erfolgreich: A-0005 gespeichert und Zähler 5. Bitte Aufgabenzähler erneut prüfen.');
+      } catch (error) {
+        alert('TEST-Reparatur nicht bestätigt. Schritt: ' + phase +
+          '. Grund: ' + (error.message || String(error)) +
+          '. Bitte diese Meldung mitteilen und nicht wiederholen.');
       } finally {
         if (button) button.disabled = false;
       }
