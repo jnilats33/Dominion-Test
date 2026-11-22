@@ -1215,6 +1215,8 @@
     }
 
     function mergeWithDefaults(incoming) {
+      // Numbering mutates nested management items; never mutate the raw Firebase snapshot.
+      incoming = sanitizeForFirebase(incoming);
       const def = createDefaultState();
       const merged = {
         ...def,
