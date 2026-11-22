@@ -219,6 +219,9 @@
                 <span class="w-1.5 h-1.5 rounded-full bg-emerald-400"></span>
                 <span id="sync-status-label">Live</span>
               </span>
+              <button id="task-counter-check-button" type="button" onclick="inspectTaskCounterTest()" hidden
+                class="px-2 py-0.5 rounded-lg border border-sky-500/50 text-sky-200 bg-sky-950/50 text-[10px] font-semibold"
+                title="Aufgabennummern und Zähler in TEST nur lesen">Aufgabenzähler prüfen</button>
               <button id="sync-conflict-review-button" type="button" onclick="openSyncConflictReview()" hidden
                 class="px-2 py-0.5 rounded-lg border border-rose-500/50 text-rose-200 bg-rose-950/50 text-[10px] font-semibold"
                 title="Ungespeicherte Änderungen ansehen">Konflikt prüfen</button>
@@ -1364,6 +1367,53 @@
     function updateSyncConflictReviewButton() {
       const button = document.getElementById('sync-conflict-review-button');
       if (button) button.hidden = !productionSyncConflict;
+      const counterButton = document.getElementById('task-counter-check-button');
+      if (counterButton) counterButton.hidden = productionSyncConflict ||
+        location.hostname !== 'jnilats33.github.io' ||
+        !location.pathname.startsWith('/Dominion-Test/');
+    }
+
+    // TEST-only follow-up after conflict resolution. Reads a fresh server snapshot.
+    async function inspectTaskCounterTest() {
+      const button = document.getElementById('task-counter-check-button');
+      if (button) button.disabled = true;
+      try {
+        if (location.hostname !== 'jnilats33.github.io' ||
+            !location.pathname.startsWith('/Dominion-Test/') ||
+            firebaseRoomPathPending !== DEVELOPMENT_TEST_ROOM ||
+            !firebaseDbRef || !testAuthUser || testAuthRole !== 'Master' ||
+            currentRole !== 'Master' || productionSyncConflict)
+          throw new Error('TEST-Sicherheitsbedingungen nicht erfüllt.');
+        const raw = (await firebaseDbRef.once('value')).val();
+        if (!raw || !Array.isArray(raw.mgmt?.aufgaben))
+          throw new Error('Serveraufgaben nicht verfügbar.');
+        const normalized = mergeWithDefaults(sanitizeForFirebase(raw));
+        const rawTasks = raw.mgmt.aufgaben;
+        const numberedTasks = normalized.mgmt.aufgaben;
+        const ids = rawTasks.map(t => t?.id);
+        const rawNumbers = rawTasks.map(t => t?.itemNumber || '(ohne Nummer)');
+        const numberedNumbers = numberedTasks.map(t => t?.itemNumber || '(ohne Nummer)');
+        const expected = numberedTasks.map((_, i) => 'A-' + String(i + 1).padStart(4, '0'));
+        const report = [
+          'TEST – Aufgabenzähler prüfen (NUR LESEN)',
+          'Serveraufgaben: ' + rawTasks.length,
+          'Roher Server-Zähler: ' + String(raw.mgmtCounters?.aufgaben ?? '(fehlt)'),
+          'Normalisierter Zähler: ' + String(normalized.mgmtCounters?.aufgaben ?? '(fehlt)'),
+          'Aufgaben-IDs eindeutig: ' + (new Set(ids).size === ids.length && ids.every(Boolean)),
+          'Rohe Nummern: ' + rawNumbers.join(', '),
+          'Normalisierte Nummern: ' + numberedNumbers.join(', '),
+          'Normalisierte Nummern vollständig A-0001 bis A-' + String(numberedTasks.length).padStart(4, '0') +
+            ': ' + (numberedNumbers.slice().sort().join('|') === expected.sort().join('|')),
+          'Konfliktsperre: ' + (productionSyncConflict ? 'aktiv' : 'inaktiv'),
+          'KEINE DATEN GESCHRIEBEN.'
+        ].join('\\n');
+        alert(report);
+      } catch (error) {
+        alert('TEST-Aufgabenzählerprüfung abgebrochen: ' + (error.message || String(error)) +
+          '\\nKEINE DATEN GESCHRIEBEN.');
+      } finally {
+        if (button) button.disabled = false;
+      }
     }
 
     // Intentionally read-only: the review does not delete drafts, unlock
