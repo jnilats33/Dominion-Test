@@ -1952,10 +1952,15 @@
             const fresh = mergeWithDefaults(sanitizeForFirebase(raw));
             const localTasks = draft.drafts.mgmt?.aufgaben;
             const remoteTasks = fresh.mgmt?.aufgaben;
+            const localTaskCount = Array.isArray(localTasks) ? localTasks.length : 'keine Liste';
+            const serverTaskCount = Array.isArray(remoteTasks) ? remoteTasks.length : 'keine Liste';
+            const serverTaskCounter = raw.mgmtCounters?.aufgaben ?? 'nicht vorhanden';
             if (!Array.isArray(localTasks) || !Array.isArray(remoteTasks) ||
                 localTasks.length < 5 || localTasks.length !== remoteTasks.length ||
                 Number(raw.mgmtCounters?.aufgaben) !== remoteTasks.length)
-              throw new Error('Aufgabenbestand oder Zähler nicht mehr wie geprüft.');
+              throw new Error('Aufgabenbestand oder Zähler nicht mehr wie geprüft. ' +
+                'Lokal: ' + localTaskCount + ', Server: ' + serverTaskCount +
+                ', Server-Zähler: ' + serverTaskCounter + '.');
             const omitKnownEmpty = (value, context) => {
               if (Array.isArray(value))
                 return value.map(v=>omitKnownEmpty(v,context));
