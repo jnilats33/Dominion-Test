@@ -14,11 +14,17 @@ initializeApp();
 const ROOM = 'dominion-test-20261114-isolated';
 const REGION = 'europe-west1';
 const ROLES = new Set(['Master', 'Daisy']);
+const ROLE_UIDS = Object.freeze({
+  Master: 'ctgxl53FnFfeG75Z3tCiDnijbG43',
+  Daisy: 'WH2QtbiWtdcIPgo2VuXu1xPyhD13',
+});
 
 function verifiedRole(request) {
-  // Only Firebase Auth custom claims issued by a trusted administrator count.
+  // Match the same UID + custom-claim pair required by the live RTDB rules.
   const role = request.auth?.token?.dominionTestRole;
-  if (!ROLES.has(role)) throw new HttpsError('permission-denied', 'Verified test role required.');
+  const uid = request.auth?.uid;
+  if (!ROLES.has(role) || ROLE_UIDS[role] !== uid)
+    throw new HttpsError('permission-denied', 'Verified test role and account required.');
   return role;
 }
 
