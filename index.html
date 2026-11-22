@@ -1894,6 +1894,64 @@
             const snapshot = await firebaseDbRef.once('value');
             const raw = snapshot.val();
             if (!raw || !raw.mgmt || !raw.basics || !raw.permissions) throw new Error('Serverdaten nicht vollständig.');
+            // TEST-only final guard: compare fresh server state with the
+            // preserved local draft before discarding anything locally.
+            if (!productionSyncConflict || !testAuthUser ||
+                testAuthRole !== 'Master' || currentRole !== 'Master' ||
+                location.hostname !== 'jnilats33.github.io' ||
+                !location.pathname.startsWith('/Dominion-Test/') ||
+                firebaseRoomPathPending !== DEVELOPMENT_TEST_ROOM)
+              throw new Error('TEST-Sicherheitsbedingungen nicht erfüllt.');
+            const draft = JSON.parse(localStorage.getItem(SYNC_CONFLICT_DRAFT_KEY) || 'null');
+            if (!draft?.drafts || typeof draft.drafts !== 'object')
+              throw new Error('Konfliktentwurf fehlt oder ist nicht lesbar.');
+            const fresh = mergeWithDefaults(sanitizeForFirebase(raw));
+            const localTasks = draft.drafts.mgmt?.aufgaben;
+            const remoteTasks = fresh.mgmt?.aufgaben;
+            if (!Array.isArray(localTasks) || !Array.isArray(remoteTasks) ||
+                localTasks.length !== 4 || remoteTasks.length !== 4 ||
+                Number(raw.mgmtCounters?.aufgaben) !== 4)
+              throw new Error('Aufgabenbestand oder Zähler nicht mehr wie geprüft.');
+            const omitKnownEmpty = (value, context) => {
+              if (Array.isArray(value))
+                return value.map(v=>omitKnownEmpty(v,context));
+              if (!value || typeof value !== 'object') return value;
+              const copy={};
+              for (const [key,v] of Object.entries(value)) {
+                if (context==='task' && key==='history' && Array.isArray(v) && v.length===0) continue;
+                if (context==='task' && key==='reminderMinutes' && v===null) continue;
+                if (context==='activity' && (key==='targetSubCategory'||key==='targetItemId') && v===null) continue;
+                copy[key]=omitKnownEmpty(v,context);
+              }
+              return copy;
+            };
+            const compareTask = (a,b) => sameRemoteValue(
+              omitKnownEmpty(a,'task'),omitKnownEmpty(b,'task'));
+            const byId=new Map(remoteTasks.map(t=>[t.id,t]));
+            if (byId.size!==4 || localTasks.some(t=>!byId.has(t.id) ||
+                !compareTask(t,byId.get(t.id))))
+              throw new Error('Aufgaben unterscheiden sich weiterhin vom Server.');
+            const expectedNumbers=new Set(['A-0001','A-0002','A-0003','A-0004']);
+            if (remoteTasks.some(t=>!expectedNumbers.delete(t.itemNumber)) ||
+                expectedNumbers.size!==0)
+              throw new Error('Aufgabennummern nicht eindeutig 1 bis 4.');
+            const localFeed=draft.drafts.activityFeed;
+            const remoteFeed=fresh.activityFeed;
+            if (!Array.isArray(localFeed) || !Array.isArray(remoteFeed) ||
+                localFeed.length!==14 || remoteFeed.length!==14 ||
+                localFeed.some((v,i)=>!sameRemoteValue(
+                  omitKnownEmpty(v,'activity'),omitKnownEmpty(remoteFeed[i],'activity'))))
+              throw new Error('Aktivitätsverlauf unterscheidet sich vom Server.');
+            const excluded=new Set(['chat','chatV2','firebase','fcmToken','version','mgmt','activityFeed']);
+            for (const [key,value] of Object.entries(draft.drafts)) {
+              if (excluded.has(key)) continue;
+              if (!sameRemoteValue(value,fresh[key]))
+                throw new Error('Abweichung in '+key+'. Konflikt bleibt gesperrt.');
+            }
+            const categories=['kleidung','toys','strafen','belohnungen','regeln'];
+            if (categories.some(key=>!sameRemoteValue(
+              draft.drafts.mgmt?.[key],fresh.mgmt?.[key])))
+              throw new Error('Weitere Verwaltungskategorie weicht ab.');
             const { chat: ignoredChat, chatV2: ignoredChatV2, ...remote } = raw;
             const liveChat = appState.chat || [];
             const nextState = mergeWithDefaults(remote);
