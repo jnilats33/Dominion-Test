@@ -1728,6 +1728,21 @@
                   ' / normalisierter Server '+String(remoteCounters[key]??'fehlt')+
                   ' / roher Server '+String(raw.mgmtCounters?.[key]??'fehlt'));
             }
+            lines.push('--- Aufgaben-Nummern: Rohserver / Lokal / Normalisiert ---');
+            if (Array.isArray(draftTasks)) {
+              const rawById=new Map((raw.mgmt?.aufgaben||[]).map(t=>[t.id,t]));
+              const normalizedById=new Map((normalized.mgmt?.aufgaben||[]).map(t=>[t.id,t]));
+              draftTasks.forEach((task,i)=>{
+                const rawTask=rawById.get(task.id);
+                const normTask=normalizedById.get(task.id);
+                lines.push('Aufgabe '+(i+1)+': lokal '+
+                  String(task.itemNumber??'(keine)')+' / Rohserver '+
+                  String(rawTask?.itemNumber??'(keine)')+' / normalisiert '+
+                  String(normTask?.itemNumber??'(keine)'));
+              });
+              const rawNums=(raw.mgmt?.aufgaben||[]).map(t=>t.itemNumber).filter(Boolean);
+              lines.push('Rohserver-Nummern eindeutig: '+(new Set(rawNums).size===rawNums.length));
+            }
             lines.push('KEINE DATEN GESCHRIEBEN. KONFLIKTSPERRE BLEIBT AKTIV.');
             const report = lines.join('\n');
             const overlay = document.createElement('div');
