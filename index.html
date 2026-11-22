@@ -1259,7 +1259,7 @@
     }
 
     // Keep a separate local recovery copy. Never upload this draft automatically.
-    function saveSyncConflictDraft(key, error, refreshAll = false) {
+    function saveSyncConflictDraft(key, error, refreshAll = false, diagnostic = null) {
       try {
         const previous = JSON.parse(localStorage.getItem(SYNC_CONFLICT_DRAFT_KEY) || '{}');
         const drafts = previous && typeof previous.drafts === 'object' && previous.drafts ? previous.drafts : {};
@@ -1281,6 +1281,7 @@
           createdAt: previous.createdAt || new Date().toISOString(),
           updatedAt: new Date().toISOString(),
           reason: error ? 'write-error' : 'write-conflict',
+          diagnostic: diagnostic || previous.diagnostic || null,
           drafts
         }));
         return true;
@@ -1330,6 +1331,7 @@
           server:lastRemoteState ? JSON.parse(JSON.stringify(server)) : null};
       });
       return {status:lastRemoteState ? 'ready' : 'server-unavailable',
+        diagnostic:saved.diagnostic || null,
         createdAt:saved.createdAt || null, updatedAt:saved.updatedAt || null,
         collections};
     }
@@ -1362,6 +1364,12 @@
             ? 'Der lokale Konfliktentwurf ist nicht lesbar. Keine Änderungen vornehmen; Datenbestand sichern.'
             : 'Kein Konfliktentwurf gefunden.';
       panel.appendChild(info);
+      if (review.diagnostic) {
+        const diagnostic = document.createElement('pre');
+        diagnostic.className = 'text-xs whitespace-pre-wrap break-all mb-4 p-3 bg-black/30 rounded';
+        diagnostic.textContent = 'Schreibfehler-Diagnose (ohne Dateninhalte):\n' + JSON.stringify(review.diagnostic, null, 2);
+        panel.appendChild(diagnostic);
+      }
       for (const item of review.collections) {
         const section = document.createElement('section');
         section.className = 'border border-slate-700 rounded-xl p-3 mb-3';
@@ -2370,10 +2378,21 @@
         const expected = sanitizeForFirebase(rawBaseline);
         const roomRef = firebaseDbRef;
         pendingCollectionWrites.set(key, {roomRef, desired});
+        let writePhase = 'vorabprüfung';
+        let observedMismatch = null;
         const failWrite = (error) => {
           pendingCollectionWrites.delete(key);
           console.warn('Firebase Konflikt oder Speicherfehler in', key, error);
-          const draftSaved = saveSyncConflictDraft(key, error, true);
+          const diagnostic = {
+            at: new Date().toISOString(), collection: key, phase: writePhase,
+            errorCode: String(error?.code || 'none').slice(0, 100),
+            errorType: error ? (error.message === 'Serverstand vor Transaktion geändert' ? 'baseline-mismatch' : 'transaction-error') : 'transaction-not-committed',
+            expectedType: expected === null ? 'null' : Array.isArray(expected) ? 'array' : typeof expected,
+            observedType: observedMismatch === null ? 'not-captured' : observedMismatch,
+            pendingCollections: Array.from(pendingCollectionWrites.keys())
+          };
+          console.warn('TEST write diagnostic', diagnostic);
+          const draftSaved = saveSyncConflictDraft(key, error, true, diagnostic);
           productionSyncConflict = true;
           updateSyncConflictReviewButton();
           productionRoomLoaded = false;
@@ -2386,9 +2405,11 @@
         // The transaction still compares the live value to prevent lost updates.
         roomRef.child(key).once('value').then(snapshot => {
           if (!sameRemoteValue(snapshot.val(), expected)) {
+            observedMismatch = snapshot.val() === null ? 'null' : Array.isArray(snapshot.val()) ? 'array' : typeof snapshot.val();
             failWrite(new Error('Serverstand vor Transaktion geändert'));
             return;
           }
+          writePhase = 'transaktion';
           let transactionAttempts = 0;
           roomRef.child(key).transaction(current => {
             transactionAttempts++;
