@@ -870,7 +870,7 @@
           </div>
 
           <!-- SUB-TAB C: SICHERHEIT & PUSH (MASTER ONLY) -->
-          <div id="settings-panel-benachrichtigungen" class="hidden space-y-5">
+          <div id="settings-panel-benachrichtigungen" class="hidden space-y-5"><div class="p-4 rounded-2xl bg-white/[0.03] border border-slate-800 space-y-3"><h3 class="font-semibold text-sm">🔔 Push-Ereignisse</h3><div id="push-preferences-list" class="space-y-2"></div><p id="push-preferences-status" class="text-xs text-amber-300"></p></div>
             <div class="p-4 rounded-2xl bg-white/[0.03] border border-slate-800 space-y-3.5">
               <h3 class="font-semibold text-sm text-white">🔔 Benachrichtigungen auf diesem Gerät</h3>
               <p class="text-xs text-slate-300">Erlaube Benachrichtigungen für dieses Smartphone. Die Zustellung bei geschlossener App wird separat getestet.</p>
@@ -898,7 +898,7 @@
               </div>
             </div>
           </div>
-          <div id="settings-panel-sicherheit" class="hidden space-y-5">
+          <div id="settings-panel-sicherheit" class="hidden space-y-5"><div class="p-4 rounded-2xl bg-white/[0.03] border border-slate-800 space-y-3"><h3 class="font-semibold text-sm">🔔 Push-Ereignisse</h3><div id="master-push-preferences-list" class="space-y-2"></div><p id="master-push-preferences-status" class="text-xs text-amber-300"></p></div>
             <!-- Firebase Live-Sync -->
             <div class="p-4 rounded-2xl bg-white/[0.03] border border-slate-800 space-y-3.5">
               <div class="flex items-center justify-between">
@@ -1038,6 +1038,7 @@
     const STORAGE_KEY = 'dominion_test_state_20261114';
     const LEGACY_KEYS = [];
     const DEVICE_PREFS_KEY = 'dominion_test_device_prefs_20261114';
+    const PUSH_EVENTS = {chat:'Neue Chatnachrichten',task:'Neue Aufgaben',taskReview:'Aufgaben zur Prüfung',calendar:'Kalendertermine',shopping:'Einkaufsliste',rewards:'Belohnungen und Einlösungen',penalty:'Strafbuch'};
     const SYNC_CONFLICT_DRAFT_KEY = 'dominion_test_sync_conflict_draft_v1';
     const DEFAULT_FB_URL = 'https://dominionapp-45bfa-default-rtdb.europe-west1.firebasedatabase.app';
     const DEFAULT_ROOM_CODE = 'dominion-test-20261114-isolated';
@@ -1905,6 +1906,7 @@
         }
         updateTestAuthPanel();
         updateAuthenticatedFirebaseSync();
+        loadPushPrefs();
         if (testAuthUser && testAuthRole === currentRole) registerTestPushToken().catch(e => console.warn("Push registration pending:", e.message));
       });
     }
@@ -2405,6 +2407,42 @@
       localStorage.setItem(DEVICE_PREFS_KEY, JSON.stringify(prefs));
     }
 
+    let pushPrefs = null, pushPrefsRole = null, pushSaving = false;
+    async function loadPushPrefs() {
+      pushPrefs = null; pushPrefsRole = null; renderPushPrefs();
+      if (!testAuthUser || testAuthRole !== currentRole) return;
+      const role = currentRole;
+      try {
+        const response = await firebase.app().functions('europe-west1').httpsCallable('getTestPushPreferences')();
+        if (role !== currentRole || role !== testAuthRole) return;
+        pushPrefs = response.data.preferences; pushPrefsRole = role;
+      } catch(e) { console.warn('Push-Einstellungen:',e); }
+      renderPushPrefs();
+    }
+    function renderPushPrefs() {
+      const master = currentRole === 'Master';
+      const list = document.getElementById(master ? 'master-push-preferences-list' : 'push-preferences-list');
+      const status = document.getElementById(master ? 'master-push-preferences-status' : 'push-preferences-status');
+      if (!list || !status) return;
+      const ready = !!pushPrefs && pushPrefsRole === currentRole && testAuthRole === currentRole;
+      list.innerHTML = Object.entries(PUSH_EVENTS).map(([key,label]) =>
+        '<label class="flex items-center justify-between gap-2 rounded-lg bg-white/5 p-2 text-xs"><span>'+
+        escapeHtml(label)+'</span><input type="checkbox" data-push-event="'+key+'" '+
+        (ready && pushPrefs[key] ? 'checked ' : '')+(ready && !pushSaving ? '' : 'disabled ')+
+        'onchange="savePushPref(this.dataset.pushEvent,this.checked)"></label>').join('');
+      status.textContent = ready ? (pushSaving ? 'Speichert …' : '✓ Serverseitig geladen') :
+        'Firebase-Anmeldung und bereitgestellte Testfunktionen erforderlich.';
+    }
+    async function savePushPref(key,enabled) {
+      if (!Object.prototype.hasOwnProperty.call(PUSH_EVENTS,key) || pushSaving ||
+          !testAuthUser || testAuthRole !== currentRole || pushPrefsRole !== currentRole) return;
+      pushSaving = true; renderPushPrefs();
+      try {
+        const response = await firebase.app().functions('europe-west1').httpsCallable('setTestPushPreference')({event:key,enabled:!!enabled});
+        if (response.data?.saved && testAuthRole === currentRole && pushPrefsRole === currentRole) pushPrefs[key]=!!enabled;
+      } catch(e) { console.warn('Push-Einstellung nicht gespeichert:',e); showToast('Push-Einstellung nicht gespeichert.','error'); }
+      finally { pushSaving=false; renderPushPrefs(); }
+    }
     function hasPermission(category, action) {
       if (currentRole === 'Master') return true;
       if (category === 'username') return !!appState.permissions.username;
@@ -3608,7 +3646,7 @@
       const note = document.getElementById('shop-note').value.trim();
       if (!name) return;
 
-      const item = { id: 'shop-' + Date.now(), name, note, done: false };
+      const item = { id: 'shop-' + Date.now(), name, note, done: false, createdBy: currentRole };
       appState.einkauf.unshift(item);
       logActivity(`hat Einkaufsartikel hinzugefügt: „${name}“`, 'einkauf', null, item.id);
 
@@ -3623,6 +3661,7 @@
       const item = appState.einkauf.find(i => i.id === id);
       if (!item) return;
       item.done = !item.done;
+      item.lastEditedBy = currentRole;
       logActivity(`hat Einkaufsartikel ${item.done ? 'abgehakt' : 'wieder geöffnet'}: „${item.name}“`, 'einkauf', null, item.id);
       persistState();
       refreshAllUI();
@@ -3686,7 +3725,7 @@
       const measure = document.getElementById('penalty-measure').value.trim();
       if (!reason) return;
 
-      const entry = { id: 'pen-' + Date.now(), reason, measure: measure || 'Nach Ermessen', resolved: false };
+      const entry = { id: 'pen-' + Date.now(), reason, measure: measure || 'Nach Ermessen', resolved: false, createdBy: currentRole };
       appState.strafbuch.unshift(entry);
       logActivity(`hat Strafbuch-Eintrag angelegt: „${reason}“`, 'strafbuch', null, entry.id);
 
@@ -3701,6 +3740,7 @@
       const entry = appState.strafbuch.find(p => p.id === id);
       if (!entry) return;
       entry.resolved = !entry.resolved;
+      entry.lastEditedBy = currentRole;
       logActivity(`hat Strafbuch-Eintrag als ${entry.resolved ? 'erledigt' : 'offen'} markiert: „${entry.reason}“`, 'strafbuch', null, entry.id);
       persistState();
       refreshAllUI();
@@ -3784,7 +3824,7 @@
       if (!Number.isFinite(Number(amount)) || !amount) return false;
       if (!Array.isArray(appState.rewardLedger)) appState.rewardLedger = [];
       if (appState.rewardLedger.some(row => row.id === key) || (appState.deletedRewardKeys || []).includes(key)) return false;
-      appState.rewardLedger.push({ id: key, amount: Number(amount), description, timestamp: Date.now() });
+      appState.rewardLedger.push({ id: key, amount: Number(amount), description, timestamp: Date.now(), actorRole: currentRole });
       if (currentRole) showRewardToast(Number(amount));
       return true;
     }
@@ -3915,14 +3955,14 @@
       processTaskDeadlines();
       const timestamp = Date.now();
       task.reportedAt = timestamp;
-      task.status = 'review';
+      task.status = 'review'; task.lastEditedBy = currentRole;
       (task.history ||= []).push({ event: 'Zur Prüfung eingereicht', at: timestamp });
       persistState(); refreshAllUI(); showToast('Zur Prüfung eingereicht.');
     }
     function completeMasterTask(id) {
       const task = appState.mgmt.aufgaben.find(t => t.id === id);
       if (!task || (task.taskKind !== 'personal' && task.assignee !== 'Master') || task.status === 'done' || (currentRole !== 'Master' && (currentRole !== 'Daisy' || task.assignee !== 'Daisy' || !hasPermission('aufgaben', 'visible')))) return;
-      task.status = 'done'; task.done = true;
+      task.status = 'done'; task.done = true; task.lastEditedBy = currentRole;
       (task.history ||= []).push({ event: 'Erledigt', at: Date.now() });
       persistState(); refreshAllUI();
     }
@@ -3936,19 +3976,19 @@
         if (!Number.isFinite(new Date(deadline).getTime()) || new Date(deadline).getTime() <= Date.now()) return showToast('Neue Deadline muss in der Zukunft liegen.', 'error');
         task.cycle = (task.cycle || 0) + 1;
         task.deadline = deadline;
-        task.status = 'open';
+        task.status = 'open'; task.lastEditedBy = currentRole;
         task.reportedAt = null;
         (task.history ||= []).push({ event: 'Frist verlängert', at: Date.now(), deadline });
       } else if (decision === 'accept') {
         bookReward('task:' + task.id + ':completed', rewardAmount(task.plusPoints), 'Aufgabe erfüllt: ' + task.title);
-        task.status = 'done'; task.done = true;
+        task.status = 'done'; task.done = true; task.lastEditedBy = currentRole;
         (task.history ||= []).push({ event: 'Erfüllt bestätigt', at: Date.now() });
       } else if (decision === 'reject') {
         const lateKey = 'task:' + task.id + ':late:' + (task.cycle || 0);
         if (!(appState.rewardLedger || []).some(row => row.id === lateKey)) {
           bookReward('task:' + task.id + ':rejected:' + (task.cycle || 0), -rewardAmount(task.minusPoints), 'Nicht erfüllt: ' + task.title);
         }
-        task.status = 'rejected'; task.done = false;
+        task.status = 'rejected'; task.done = false; task.lastEditedBy = currentRole;
         (task.history ||= []).push({ event: 'Endgültig nicht erfüllt', at: Date.now() });
       } else return;
       persistState(); refreshAllUI();
@@ -4585,6 +4625,7 @@
       document.getElementById('settings-panel-entwicklung').classList.toggle('hidden', !isMaster || activeSettingsSubTab !== 'entwicklung');
       if (isMaster && activeSettingsSubTab === 'entwicklung') renderDevelopmentPanel();
       document.getElementById('settings-panel-benachrichtigungen').classList.toggle('hidden', isMaster || activeSettingsSubTab !== 'benachrichtigungen');
+      renderPushPrefs();
       const authParent = document.getElementById(isMaster ? 'settings-panel-sicherheit' : 'settings-panel-benachrichtigungen');
       let authPanel = document.getElementById('test-firebase-auth-panel');
       if (authParent && !authPanel) {
