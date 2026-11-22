@@ -1387,6 +1387,60 @@
       close.textContent = 'Schließen (keine Änderungen)';
       close.addEventListener('click',()=>backdrop.remove());
       panel.appendChild(close);
+      // TEST-only read-only preview for recovering the missing Push-Test 4 task.
+      if (productionSyncConflict && firebaseDbRef && testAuthUser &&
+          testAuthRole === 'Master' && currentRole === 'Master' &&
+          location.hostname === 'jnilats33.github.io' &&
+          location.pathname.startsWith('/Dominion-Test/') &&
+          firebaseRoomPathPending === DEVELOPMENT_TEST_ROOM) {
+        const preview = document.createElement('button');
+        preview.type = 'button';
+        preview.className = 'ml-2 mt-2 px-4 py-2 rounded-lg border border-sky-500 text-sky-200 text-sm';
+        preview.textContent = 'Push-Test 4: Wiederherstellung prüfen (nur lesen)';
+        preview.addEventListener('click', async () => {
+          preview.disabled = true;
+          try {
+            const draft = JSON.parse(localStorage.getItem(SYNC_CONFLICT_DRAFT_KEY) || 'null');
+            const localTasks = draft?.drafts?.mgmt?.aufgaben;
+            const live = (await firebaseDbRef.once('value')).val();
+            const serverTasks = live?.mgmt?.aufgaben;
+            if (!Array.isArray(localTasks) || !Array.isArray(serverTasks))
+              throw new Error('Entwurf oder Server-Aufgabenliste fehlt.');
+            const candidates = localTasks.filter(t => t?.title === 'Push-Test 4');
+            if (candidates.length !== 1 || !candidates[0].id)
+              throw new Error('Push-Test 4 im Entwurf nicht eindeutig.');
+            const task = candidates[0];
+            const localIds = new Set(localTasks.map(t => t?.id));
+            const serverIds = new Set(serverTasks.map(t => t?.id));
+            const missing = localTasks.filter(t => !serverIds.has(t?.id));
+            const serverOnly = serverTasks.filter(t => !localIds.has(t?.id));
+            const usedNumbers = serverTasks.map(t => t?.itemNumber).filter(Boolean);
+            const maxNumber = Math.max(0, Number(live.mgmtCounters?.aufgaben) || 0,
+              ...usedNumbers.map(n => /^A-\\d+$/.test(n) ? Number(n.slice(2)) : 0));
+            const proposedNumber = 'A-' + String(maxNumber + 1).padStart(4,'0');
+            const safe = missing.length === 1 && missing[0].id === task.id &&
+              serverOnly.length === 0 && !serverIds.has(task.id) &&
+              !usedNumbers.includes(task.itemNumber) &&
+              serverTasks.every(t => localTasks.some(l => l.id === t.id));
+            alert([
+              'TEST – Wiederherstellungsvorschau (NUR LESEN)',
+              'Aufgabe: ' + task.title,
+              'ID: ' + task.id,
+              'Aufgaben Server / Lokal: ' + serverTasks.length + ' / ' + localTasks.length,
+              'Nur lokal vorhandene Aufgaben: ' + missing.length,
+              'Nur auf Server vorhandene Aufgaben: ' + serverOnly.length,
+              'Nummer im Entwurf: ' + (task.itemNumber || 'keine'),
+              'Serverzähler: ' + String(live.mgmtCounters?.aufgaben ?? 'fehlt'),
+              'Nächste freie Nummer nach Maximalwert: ' + proposedNumber,
+              'Eindeutige Wiederherstellungskandidatin: ' + (safe ? 'JA' : 'NEIN'),
+              'KEINE DATEN GESCHRIEBEN. KONFLIKTSPERRE UNVERÄNDERT.'
+            ].join('\\n'));
+          } catch (error) {
+            alert('Vorschau fehlgeschlagen (keine Änderungen): ' + error.message);
+          } finally { preview.disabled = false; }
+        });
+        panel.appendChild(preview);
+      }
       if (recoveryCandidate()) {
         const recover = document.createElement('button');
         recover.type = 'button';
