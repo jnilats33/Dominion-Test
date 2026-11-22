@@ -1761,31 +1761,40 @@
         const expected = sanitizeForFirebase(rawBaseline);
         const roomRef = firebaseDbRef;
         pendingCollectionWrites.set(key, {roomRef, desired});
-        roomRef.child(key).transaction(current => {
-          if (!sameRemoteValue(current, expected)) return;
-          return desired;
-        }, (error, committed) => {
+        const failWrite = (error) => {
           pendingCollectionWrites.delete(key);
-          if (error || !committed) {
-            console.warn('Firebase Konflikt oder Speicherfehler in', key, error);
-            // Capture every outstanding local collection edit before locking sync.
-            // Otherwise an unrelated unsent edit could be lost on restart.
-            const draftSaved = saveSyncConflictDraft(key, error, true);
-            productionSyncConflict = true;
-            updateSyncConflictReviewButton();
-            productionRoomLoaded = false; // fail closed; snapshots must not auto-unlock
-            updateSyncIndicator(false);
-            showToast('Synchronisation gesperrt: ' + key + ' nicht gespeichert. ' +
-              (draftSaved ? 'Lokaler Konfliktentwurf gesichert.' : 'Lokale Sicherung fehlgeschlagen – bitte Daten sofort exportieren!'), 'error');
+          console.warn('Firebase Konflikt oder Speicherfehler in', key, error);
+          const draftSaved = saveSyncConflictDraft(key, error, true);
+          productionSyncConflict = true;
+          updateSyncConflictReviewButton();
+          productionRoomLoaded = false;
+          updateSyncIndicator(false);
+          showToast('Synchronisation gesperrt: ' + key + ' nicht gespeichert. ' +
+            (draftSaved ? 'Lokaler Konfliktentwurf gesichert.' : 'Lokale Sicherung fehlgeschlagen – bitte Daten sofort exportieren!'), 'error');
+        };
+        // Read the exact path first. Firebase transactions can initially receive
+        // null for an uncached location, even when that location exists remotely.
+        // The transaction still compares the live value to prevent lost updates.
+        roomRef.child(key).once('value').then(snapshot => {
+          if (!sameRemoteValue(snapshot.val(), expected)) {
+            failWrite(new Error('Serverstand vor Transaktion geändert'));
             return;
           }
-          if (roomRef !== firebaseDbRef) return;
-          if (lastRemoteState) lastRemoteState[key] = sanitizeForFirebase(desired);
-          if (lastRemoteRawState) lastRemoteRawState[key] = sanitizeForFirebase(desired);
-          // The local state may have changed while this write was in flight.
-          // Never retry an external conflict automatically.
-          if (!sameRemoteValue(appState[key], desired)) persistState();
-        }, false);
+          roomRef.child(key).transaction(current => {
+            if (!sameRemoteValue(current, expected)) return;
+            return desired;
+          }, (error, committed) => {
+            if (error || !committed) {
+              failWrite(error);
+              return;
+            }
+            pendingCollectionWrites.delete(key);
+            if (roomRef !== firebaseDbRef) return;
+            if (lastRemoteState) lastRemoteState[key] = sanitizeForFirebase(desired);
+            if (lastRemoteRawState) lastRemoteRawState[key] = sanitizeForFirebase(desired);
+            if (!sameRemoteValue(appState[key], desired)) persistState();
+          }, false);
+        }).catch(failWrite);
       }
     }
 
