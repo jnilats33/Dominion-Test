@@ -1917,8 +1917,8 @@
             const localTasks = draft.drafts.mgmt?.aufgaben;
             const remoteTasks = fresh.mgmt?.aufgaben;
             if (!Array.isArray(localTasks) || !Array.isArray(remoteTasks) ||
-                localTasks.length !== 4 || remoteTasks.length !== 4 ||
-                Number(raw.mgmtCounters?.aufgaben) !== 4)
+                localTasks.length < 5 || localTasks.length !== remoteTasks.length ||
+                Number(raw.mgmtCounters?.aufgaben) !== remoteTasks.length)
               throw new Error('Aufgabenbestand oder Zähler nicht mehr wie geprüft.');
             const omitKnownEmpty = (value, context) => {
               if (Array.isArray(value))
@@ -1936,17 +1936,17 @@
             const compareTask = (a,b) => sameRemoteValue(
               omitKnownEmpty(a,'task'),omitKnownEmpty(b,'task'));
             const byId=new Map(remoteTasks.map(t=>[t.id,t]));
-            if (byId.size!==4 || localTasks.some(t=>!byId.has(t.id) ||
+            if (byId.size!==remoteTasks.length || localTasks.some(t=>!byId.has(t.id) ||
                 !compareTask(t,byId.get(t.id))))
               throw new Error('Aufgaben unterscheiden sich weiterhin vom Server.');
-            const expectedNumbers=new Set(['A-0001','A-0002','A-0003','A-0004']);
+            const expectedNumbers=new Set(remoteTasks.map((_,i)=>'A-'+String(i+1).padStart(4,'0')));
             if (remoteTasks.some(t=>!expectedNumbers.delete(t.itemNumber)) ||
                 expectedNumbers.size!==0)
-              throw new Error('Aufgabennummern nicht eindeutig 1 bis 4.');
+              throw new Error('Aufgabennummern nicht eindeutig oder lückenlos.');
             const localFeed=draft.drafts.activityFeed;
             const remoteFeed=fresh.activityFeed;
             if (!Array.isArray(localFeed) || !Array.isArray(remoteFeed) ||
-                localFeed.length!==14 || remoteFeed.length!==14 ||
+                localFeed.length!==remoteFeed.length ||
                 localFeed.some((v,i)=>!sameRemoteValue(
                   omitKnownEmpty(v,'activity'),omitKnownEmpty(remoteFeed[i],'activity'))))
               throw new Error('Aktivitätsverlauf unterscheidet sich vom Server.');
