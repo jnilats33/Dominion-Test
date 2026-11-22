@@ -1445,6 +1445,84 @@
         });
         panel.appendChild(preview);
       }
+      if (productionSyncConflict && firebaseDbRef && testAuthUser &&
+          testAuthRole === 'Master' && currentRole === 'Master' &&
+          location.hostname === 'jnilats33.github.io' &&
+          location.pathname.startsWith('/Dominion-Test/') &&
+          firebaseRoomPathPending === DEVELOPMENT_TEST_ROOM &&
+          !recoveryPending && pendingCollectionWrites.size === 0) {
+        const restoreTask = document.createElement('button');
+        restoreTask.type = 'button';
+        restoreTask.className = 'ml-2 mt-2 px-4 py-2 rounded-lg border border-amber-500 text-amber-200 text-sm';
+        restoreTask.textContent = 'Push-Test 4 gezielt wiederherstellen';
+        restoreTask.addEventListener('click', async () => {
+          if (recoveryPending || pendingCollectionWrites.size) return;
+          const draft = JSON.parse(localStorage.getItem(SYNC_CONFLICT_DRAFT_KEY) || 'null');
+          const localTasks = draft?.drafts?.mgmt?.aufgaben;
+          const targetId = 'task-1795361950892-zvm0g';
+          const candidates = Array.isArray(localTasks) ? localTasks.filter(t=>t?.id===targetId) : [];
+          if (candidates.length !== 1 || candidates[0].title !== 'Push-Test 4' ||
+              candidates[0].itemNumber !== 'A-0004') {
+            alert('Entwurf nicht eindeutig oder verändert. Kein Schreibzugriff.'); return;
+          }
+          const task = sanitizeForFirebase(candidates[0]);
+          if (!confirm('TEST: Nur Push-Test 4 (A-0004) ergänzen und den Aufgabenzähler mindestens auf 4 setzen? Bestehende Aufgaben und alle anderen Bereiche bleiben unverändert. Die Aufgabe kann eine Push-Nachricht auslösen.')) return;
+          restoreTask.disabled = true;
+          recoveryPending = true;
+          let reason = 'Serverdaten weichen ab';
+          try {
+            // A root transaction updates task and counter atomically, preserving all
+            // other fields. Its updater may be retried; never use side effects inside.
+            const result = await new Promise((resolve,reject) => {
+              firebaseDbRef.transaction(current => {
+                if (!current || !Array.isArray(current.mgmt?.aufgaben) ||
+                    !current.mgmtCounters || typeof current.mgmtCounters !== 'object') {
+                  reason = 'Serverdaten unvollständig'; return;
+                }
+                const existing = current.mgmt.aufgaben;
+                if (existing.length !== 3 ||
+                    existing.some(t=>t?.id===targetId || t?.itemNumber==='A-0004') ||
+                    new Set(existing.map(t=>t?.id)).size !== existing.length ||
+                    !existing.every(t=>localTasks.some(l=>l?.id===t?.id)) ||
+                    localTasks.filter(t=>!existing.some(e=>e.id===t.id)).length !== 1) {
+                  reason = 'Aufgabenliste hat sich verändert'; return;
+                }
+                const normalized = mergeWithDefaults(sanitizeForFirebase(current));
+                if (normalized.mgmt.aufgaben.some(t=>t.itemNumber==='A-0004') ||
+                    Number(normalized.mgmtCounters.aufgaben) !== 3 ||
+                    Number(current.mgmtCounters.aufgaben) !== 1) {
+                  reason = 'Nummern oder Zähler haben sich verändert'; return;
+                }
+                // Preserve the exact raw existing entries; do not renumber them.
+                const next = sanitizeForFirebase(current);
+                next.mgmt.aufgaben.push(sanitizeForFirebase(task));
+                next.mgmtCounters.aufgaben = 4;
+                return next;
+              },(error,committed,snapshot)=>{
+                if (error) reject(error); else resolve({committed,snapshot});
+              },false);
+            });
+            if (!result.committed) {
+              alert('Keine Wiederherstellung durchgeführt: '+reason+'\\nKonfliktsperre bleibt aktiv.');
+              return;
+            }
+            const saved = result.snapshot?.val();
+            if (saved?.mgmt?.aufgaben?.filter(t=>t?.id===targetId).length!==1 ||
+                Number(saved?.mgmtCounters?.aufgaben)!==4) {
+              alert('Transaktion bestätigt, Nachprüfung unklar. Bitte nichts weiter ändern. Sicherung behalten.');
+              return;
+            }
+            alert('Push-Test 4 auf TEST wiederhergestellt und bestätigt. Konfliktsperre bleibt vorerst aktiv. Bitte Sicherung behalten und Ergebnis mitteilen.');
+          } catch(e) {
+            alert('Wiederherstellung nicht bestätigt: '+(e.message||String(e))+
+              '\\nSicherung und Konfliktsperre bleiben erhalten.');
+          } finally {
+            recoveryPending = false;
+            restoreTask.disabled = false;
+          }
+        });
+        panel.appendChild(restoreTask);
+      }
       if (recoveryCandidate()) {
         const recover = document.createElement('button');
         recover.type = 'button';
