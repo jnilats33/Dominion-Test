@@ -107,10 +107,31 @@ exports.notifyTestChatV2 = onValueCreated({
 });
 
 
+
+const PUSH_EVENTS = new Set(['chat','task','taskReview','calendar','shopping','rewards','penalty']);
+const PUSH_PREF_PATH = 'pushPreferences/' + ROOM;
+exports.getTestPushPreferences = onCall({region:REGION,maxInstances:2,enforceAppCheck:true},async request => {
+  const role=verifiedRole(request);
+  const snapshot=await getDatabase().ref(PUSH_PREF_PATH+'/'+role).get();
+  const saved=snapshot.val() || {};
+  return {preferences:Object.fromEntries([...PUSH_EVENTS].map(key=>[key,saved[key]!==false]))};
+});
+exports.setTestPushPreference = onCall({region:REGION,maxInstances:2,enforceAppCheck:true},async request => {
+  const role=verifiedRole(request);
+  const {event,enabled}=request.data || {};
+  if(!PUSH_EVENTS.has(event)||typeof enabled!=='boolean')
+    throw new HttpsError('invalid-argument','Invalid push preference.');
+  await getDatabase().ref(PUSH_PREF_PATH+'/'+role+'/'+event).set(enabled);
+  return {saved:true};
+});
+
 // Reuse the existing test FCM device registry and delivery mechanism.
 // These listeners do not modify app data and are scoped to the isolated test room.
-async function notifyOtherRole(sender, recipient, title, body, kind) {
+async function notifyOtherRole(sender, recipient, title, body, kind, preferenceKey = kind) {
   if (!ROLES.has(sender) || !ROLES.has(recipient) || sender === recipient) return;
+  if (!PUSH_EVENTS.has(preferenceKey)) return;
+  const preference=await getDatabase().ref(PUSH_PREF_PATH+'/'+recipient+'/'+preferenceKey).get();
+  if (preference.val() === false) return;
   const snapshot = await getDatabase().ref(`pushDevices/${ROOM}/${recipient}`).get();
   const devices = Object.entries(snapshot.val() || {}).filter(([, value]) => typeof value?.token === 'string');
   if (!devices.length) return;
@@ -157,7 +178,7 @@ exports.notifyTestTaskCreated = onValueWritten({
     const sender = task.createdBy;
     if (!ROLES.has(sender) || task.assignee !== otherRole(sender)) continue;
     await notifyOtherRole(sender, task.assignee, 'Neue Aufgabe für dich',
-      `${sender} hat dir eine Aufgabe zugewiesen: ${task.title || 'Ohne Titel'}`, 'task');
+      `${sender} hat dir eine Aufgabe zugewiesen: ${task.title || 'Ohne Titel'}`, 'task', 'task');
   }
 });
 
@@ -184,6 +205,58 @@ exports.notifyTestCalendarChanged = onValueWritten({
     await notifyOtherRole(sender, entry.owner,
       previous ? 'Termin geändert' : 'Neuer Termin für dich',
       `${sender} hat ${previous ? 'deinen Termin geändert' : 'einen Termin eingetragen'}: ${entry.title || 'Ohne Titel'} (${entry.date || ''} ${entry.time || ''})`,
-      previous ? 'calendar-updated' : 'calendar-created');
+      previous ? 'calendar-updated' : 'calendar-created', 'calendar');
+  }
+});
+
+
+function changedRows(before,after) {
+  const prev=new Map((Array.isArray(before)?before:[]).filter(x=>x?.id).map(x=>[x.id,x]));
+  return (Array.isArray(after)?after:[]).filter(x=>x?.id && JSON.stringify(prev.get(x.id))!==JSON.stringify(x))
+    .map(x=>({old:prev.get(x.id),item:x}));
+}
+exports.notifyTestShopping = onValueWritten({
+  ref:`/rooms/${ROOM}/einkauf`,instance:'dominionapp-45bfa-default-rtdb',
+  region:REGION,maxInstances:2,retry:false
+},async event=>{
+  for(const {old,item} of changedRows(event.data.before.val(),event.data.after.val()).slice(0,20)){
+    const actor=old?item.lastEditedBy:item.createdBy;
+    if(!ROLES.has(actor))continue;
+    await notifyOtherRole(actor,otherRole(actor),'Einkaufsliste',
+      old?'Einkaufsartikel geändert':'Neuer Einkaufsartikel','shopping');
+  }
+});
+exports.notifyTestPenalty = onValueWritten({
+  ref:`/rooms/${ROOM}/strafbuch`,instance:'dominionapp-45bfa-default-rtdb',
+  region:REGION,maxInstances:2,retry:false
+},async event=>{
+  for(const {old,item} of changedRows(event.data.before.val(),event.data.after.val()).slice(0,20)){
+    const actor=old?item.lastEditedBy:item.createdBy;
+    if(!ROLES.has(actor))continue;
+    await notifyOtherRole(actor,otherRole(actor),'Strafbuch',
+      old?'Strafbucheintrag geändert':'Neuer Strafbucheintrag','penalty');
+  }
+});
+exports.notifyTestTaskReview = onValueWritten({
+  ref:`/rooms/${ROOM}/mgmt/aufgaben`,instance:'dominionapp-45bfa-default-rtdb',
+  region:REGION,maxInstances:2,retry:false
+},async event=>{
+  for(const {old,item} of changedRows(event.data.before.val(),event.data.after.val()).slice(0,20)){
+    if(!old || old.status===item.status)continue;
+    const actor=item.lastEditedBy;
+    if(!ROLES.has(actor) || !['review','done','rejected','open'].includes(item.status))continue;
+    await notifyOtherRole(actor,otherRole(actor),'Aufgabenstatus',
+      'Status einer Aufgabe geändert','task-review','taskReview');
+  }
+});
+exports.notifyTestRewards = onValueWritten({
+  ref:`/rooms/${ROOM}/rewardLedger`,instance:'dominionapp-45bfa-default-rtdb',
+  region:REGION,maxInstances:2,retry:false
+},async event=>{
+  for(const {old,item} of changedRows(event.data.before.val(),event.data.after.val()).slice(0,20)){
+    const actor=old?item.redemption?.completedBy:item.actorRole;
+    if(!ROLES.has(actor))continue;
+    await notifyOtherRole(actor,otherRole(actor),'Belohnungen und Einlösungen',
+      old?'Einlösung abgeschlossen':'Neue Buchung oder Einlösung','rewards');
   }
 });
