@@ -1511,6 +1511,43 @@
                   (sameRemoteValue(saved.drafts[key],normalized[key]) ? 'GLEICH' : 'UNTERSCHIEDLICH'));
               }
             }
+            // Report only structural differences, never private values.
+            const fieldDiff = (a,b) => {
+              const left = a && typeof a === 'object' ? a : {};
+              const right = b && typeof b === 'object' ? b : {};
+              return [...new Set([...Object.keys(left),...Object.keys(right)])]
+                .filter(k => !sameRemoteValue(left[k],right[k])).sort();
+            };
+            lines.push('--- Aufgaben: Unterschiede je ID (nur Feldnamen) ---');
+            if (Array.isArray(draftTasks)) {
+              const localById = new Map(draftTasks.map(t=>[t.id,t]));
+              const serverById = new Map(normalized.mgmt.aufgaben.map(t=>[t.id,t]));
+              for (const id of new Set([...localById.keys(),...serverById.keys()])) {
+                const left = localById.get(id), right = serverById.get(id);
+                if (!left || !right) {
+                  lines.push((id===targetId?'Push-Test 4':'Andere Aufgabe')+': nur '+(left?'lokal':'Server'));
+                } else {
+                  const fields = fieldDiff(left,right);
+                  if (fields.length) lines.push((id===targetId?'Push-Test 4':'Andere Aufgabe')+
+                    ': abweichende Felder: '+fields.join(', '));
+                }
+              }
+            }
+            lines.push('--- Aufgabenzähler (nur Zahlen) ---');
+            lines.push('Lokal: '+String(saved.drafts.mgmtCounters?.aufgaben ?? 'nicht im Entwurf')+
+              ' / Server: '+String(raw.mgmtCounters?.aufgaben ?? 'fehlt'));
+            lines.push('--- Aktivitätsverlauf (nur Struktur) ---');
+            const localFeed = saved.drafts.activityFeed;
+            const serverFeed = normalized.activityFeed;
+            if (Array.isArray(localFeed) && Array.isArray(serverFeed)) {
+              lines.push('Einträge Lokal / Server: '+localFeed.length+' / '+serverFeed.length);
+              const identity = x => String(x?.id ?? '') || JSON.stringify([x?.timestamp,x?.type]);
+              const localKeys = localFeed.map(identity), serverKeys = serverFeed.map(identity);
+              lines.push('Nur lokal / nur Server (nach ID bzw. Zeit und Typ): '+
+                localKeys.filter(k=>!serverKeys.includes(k)).length+' / '+
+                serverKeys.filter(k=>!localKeys.includes(k)).length);
+              lines.push('Gleiche Reihenfolge: '+(localKeys.join('|')===serverKeys.join('|')));
+            } else lines.push('Mindestens eine Seite ist keine Liste.');
             lines.push('KEINE DATEN GESCHRIEBEN. KONFLIKTSPERRE BLEIBT AKTIV.');
             const report = lines.join('\n');
             const overlay = document.createElement('div');
