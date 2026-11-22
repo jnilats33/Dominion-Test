@@ -1772,6 +1772,87 @@
         });
         panel.appendChild(audit);
       }
+      if (productionSyncConflict && firebaseDbRef && testAuthUser &&
+          testAuthRole === 'Master' && currentRole === 'Master' &&
+          location.hostname === 'jnilats33.github.io' &&
+          location.pathname.startsWith('/Dominion-Test/') &&
+          firebaseRoomPathPending === DEVELOPMENT_TEST_ROOM) {
+        const fixNumbers = document.createElement('button');
+        fixNumbers.type = 'button';
+        fixNumbers.className = 'ml-2 mt-2 px-4 py-2 rounded-lg border border-emerald-500 text-emerald-200 text-sm';
+        fixNumbers.textContent = 'Fehlende Aufgabennummern gezielt ergänzen (TEST)';
+        fixNumbers.addEventListener('click', async () => {
+          if (recoveryPending || pendingCollectionWrites.size) {
+            alert('Reparatur gesperrt: Noch ein Vorgang aktiv.'); return;
+          }
+          if (!confirm('Nur die zwei fehlenden Aufgabennummern A-0002 und A-0003 in TEST ergänzen? Konfliktsperre bleibt bestehen.')) return;
+          recoveryPending = true;
+          fixNumbers.disabled = true;
+          let failure = 'Unbekannte Abweichung';
+          try {
+            const draft = JSON.parse(localStorage.getItem(SYNC_CONFLICT_DRAFT_KEY) || 'null');
+            const localTasks = draft?.drafts?.mgmt?.aufgaben;
+            if (!Array.isArray(localTasks) || localTasks.length !== 4)
+              throw new Error('Lokaler Aufgabenentwurf fehlt oder hat sich verändert.');
+            const baseline = (await firebaseDbRef.once('value')).val();
+            const tasks = baseline?.mgmt?.aufgaben;
+            if (!Array.isArray(tasks) || tasks.length !== 4 ||
+                Number(baseline.mgmtCounters?.aufgaben) !== 4)
+              throw new Error('Serveraufgaben oder Zähler nicht wie erwartet.');
+            const localById = new Map(localTasks.map(t=>[t.id,t]));
+            if (localById.size !== 4 || new Set(tasks.map(t=>t.id)).size !== 4 ||
+                tasks.some(t=>!localById.has(t.id)))
+              throw new Error('Aufgaben-IDs stimmen nicht überein.');
+            const expected = new Map();
+            const used = new Set();
+            for (const task of tasks) {
+              const local = localById.get(task.id);
+              const stripNumber = t => { const copy={...t}; delete copy.itemNumber; return copy; };
+              if (!sameRemoteValue(stripNumber(task),stripNumber(local)))
+                throw new Error('Inhaltliche Abweichung bei einer Aufgabe.');
+              if (task.itemNumber) {
+                if (task.itemNumber !== local.itemNumber || used.has(task.itemNumber))
+                  throw new Error('Bestehende Aufgabennummer weicht ab.');
+                used.add(task.itemNumber);
+              } else {
+                if (!['A-0002','A-0003'].includes(local.itemNumber))
+                  throw new Error('Unerwartete fehlende Nummer.');
+                expected.set(task.id,local.itemNumber);
+              }
+            }
+            if (expected.size !== 2 || used.size !== 2 ||
+                !used.has('A-0001') || !used.has('A-0004') ||
+                new Set(expected.values()).size !== 2)
+              throw new Error('Genau zwei erwartete Nummernlücken nicht bestätigt.');
+            const result = await new Promise((resolve,reject)=>{
+              firebaseDbRef.transaction(current=>{
+                if (!current || !sameRemoteValue(current.mgmt?.aufgaben,tasks) ||
+                    !sameRemoteValue(current.mgmtCounters,baseline.mgmtCounters)) {
+                  failure = 'Serverstand hat sich zwischenzeitlich verändert'; return;
+                }
+                const next = sanitizeForFirebase(current);
+                for (const task of next.mgmt.aufgaben) {
+                  if (expected.has(task.id)) task.itemNumber = expected.get(task.id);
+                }
+                return next;
+              },(error,committed,snapshot)=>{
+                if(error) reject(error); else resolve({committed,snapshot});
+              },false);
+            });
+            if (!result.committed) throw new Error(failure);
+            const saved=result.snapshot?.val();
+            if (!saved || saved.mgmt?.aufgaben?.length!==4 ||
+                Number(saved.mgmtCounters?.aufgaben)!==4 ||
+                saved.mgmt.aufgaben.some(t=>t.itemNumber!==localById.get(t.id)?.itemNumber))
+              throw new Error('Schreibvorgang bestätigt, Ergebnis bitte erneut prüfen.');
+            alert('TEST: Zwei fehlende Aufgabennummern erfolgreich ergänzt. Zähler 4. Konfliktsperre bleibt aktiv. Bitte Ergebnis melden.');
+          } catch(error) {
+            alert('Nummernreparatur nicht abgeschlossen: '+(error.message||String(error))+
+              '. Bitte Konfliktsperre nicht aufheben.');
+          } finally { recoveryPending=false; fixNumbers.disabled=false; }
+        });
+        panel.appendChild(fixNumbers);
+      }
       if (recoveryCandidate()) {
         const recover = document.createElement('button');
         recover.type = 'button';
