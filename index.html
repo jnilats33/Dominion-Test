@@ -1414,9 +1414,13 @@
             const serverIds = new Set(serverTasks.map(t => t?.id));
             const missing = localTasks.filter(t => !serverIds.has(t?.id));
             const serverOnly = serverTasks.filter(t => !localIds.has(t?.id));
-            const usedNumbers = serverTasks.map(t => t?.itemNumber).filter(Boolean);
-            const maxNumber = Math.max(0, Number(live.mgmtCounters?.aufgaben) || 0,
-              ...usedNumbers.map(n => /^A-\\d+$/.test(n) ? Number(n.slice(2)) : 0));
+            // The raw server counter can lag behind display-assigned numbers.
+            // Normalize a deep copy for inspection; never mutate the live snapshot.
+            const numbered = mergeWithDefaults(sanitizeForFirebase(live));
+            const numberedTasks = numbered.mgmt?.aufgaben || [];
+            const usedNumbers = numberedTasks.map(t => t?.itemNumber).filter(Boolean);
+            const maxNumber = Math.max(0, Number(numbered.mgmtCounters?.aufgaben) || 0,
+              ...usedNumbers.map(n => /^A-\d+$/.test(n) ? Number(n.slice(2)) : 0));
             const proposedNumber = 'A-' + String(maxNumber + 1).padStart(4,'0');
             const safe = missing.length === 1 && missing[0].id === task.id &&
               serverOnly.length === 0 && !serverIds.has(task.id) &&
@@ -1434,7 +1438,7 @@
               'Nächste freie Nummer nach Maximalwert: ' + proposedNumber,
               'Eindeutige Wiederherstellungskandidatin: ' + (safe ? 'JA' : 'NEIN'),
               'KEINE DATEN GESCHRIEBEN. KONFLIKTSPERRE UNVERÄNDERT.'
-            ].join('\\n'));
+            ].join('\n'));
           } catch (error) {
             alert('Vorschau fehlgeschlagen (keine Änderungen): ' + error.message);
           } finally { preview.disabled = false; }
