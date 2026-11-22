@@ -222,6 +222,9 @@
               <button id="sync-recovery-test-button" type="button" onclick="recoverOverdueTaskTest()" hidden
                 class="px-2 py-0.5 rounded-lg border border-amber-500/50 text-amber-200 bg-amber-950/50 text-[10px] font-semibold"
                 title="TEST: geprüften Verspätungsvorgang atomar wiederherstellen">Verspätung reparieren</button>
+              <button id="sync-counter-seven-button" type="button" onclick="repairSeventhCounterTest()" hidden
+                class="px-2 py-0.5 rounded-lg border border-amber-500/50 text-amber-200 bg-amber-950/50 text-[10px] font-semibold"
+                title="TEST: nur den geprüften Aufgabenzähler und ggf. fehlende Nummer reparieren">Zähler 7 reparieren</button>
               <button id="sync-fresh-check-button" type="button" onclick="inspectFreshConflictTest()" hidden
                 class="px-2 py-0.5 rounded-lg border border-sky-500/50 text-sky-200 bg-sky-950/50 text-[10px] font-semibold"
                 title="Konfliktentwurf mit frischem TEST-Serverstand vergleichen, nur lesen">Serverstand prüfen</button>
@@ -1376,6 +1379,11 @@
     function updateSyncConflictReviewButton() {
       const button = document.getElementById('sync-conflict-review-button');
       if (button) button.hidden = !productionSyncConflict;
+      const sevenButton = document.getElementById('sync-counter-seven-button');
+      if (sevenButton) sevenButton.hidden = !productionSyncConflict ||
+        location.hostname !== 'jnilats33.github.io' ||
+        !location.pathname.startsWith('/Dominion-Test/') ||
+        firebaseRoomPathPending !== DEVELOPMENT_TEST_ROOM;
       const recoveryButton = document.getElementById('sync-recovery-test-button');
       if (recoveryButton) recoveryButton.hidden = !productionSyncConflict ||
         location.hostname !== 'jnilats33.github.io' ||
@@ -1442,6 +1450,89 @@
       panel.append(title, field, actions);
       overlay.appendChild(panel);
       document.body.appendChild(overlay);
+    }
+
+    // One-off, explicit, guarded repair of the seventh TEST task counter.
+    // Preserve the conflict draft and lock. Never replace unrelated fields.
+    async function repairSeventhCounterTest() {
+      const button = document.getElementById('sync-counter-seven-button');
+      if (button) button.disabled = true;
+      let phase = 'Sicherheitsprüfung';
+      try {
+        if (location.hostname !== 'jnilats33.github.io' ||
+            !location.pathname.startsWith('/Dominion-Test/') ||
+            firebaseRoomPathPending !== DEVELOPMENT_TEST_ROOM ||
+            !firebaseDbRef || !testAuthUser || testAuthRole !== 'Master' ||
+            currentRole !== 'Master' || !productionSyncConflict ||
+            pendingCollectionWrites.size || recoveryPending || deadlineTransactionPending)
+          throw new Error('TEST-Sicherheitsbedingungen nicht erfüllt.');
+        const draftText = localStorage.getItem(SYNC_CONFLICT_DRAFT_KEY);
+        const draft = JSON.parse(draftText || 'null');
+        if (!draft?.drafts?.mgmt?.aufgaben || !Array.isArray(draft.drafts.activityFeed))
+          throw new Error('Konfliktentwurf unvollständig.');
+        const roomRef = firebaseDbRef;
+        const baseline = (await roomRef.once('value')).val();
+        const rawTasks = baseline?.mgmt?.aufgaben;
+        const normalized = baseline && mergeWithDefaults(sanitizeForFirebase(baseline));
+        if (!Array.isArray(rawTasks) || rawTasks.length !== 7 ||
+            Number(baseline.mgmtCounters?.aufgaben) !== 6 ||
+            normalized.mgmtCounters.aufgaben !== 7 ||
+            !sameConflictReviewValue('mgmt',draft.drafts.mgmt,normalized.mgmt) ||
+            !sameConflictReviewValue('activityFeed',draft.drafts.activityFeed,normalized.activityFeed))
+          throw new Error('Serverdaten, Zähler oder lokaler Entwurf weichen ab.');
+        const ids = rawTasks.map(t => t?.id);
+        const existing = rawTasks.map(t => t?.itemNumber).filter(Boolean).sort();
+        const expectedSix = Array.from({length:6},(_,i)=>'A-'+String(i+1).padStart(4,'0')).join('|');
+        const expectedSeven = expectedSix + '|A-0007';
+        const missing = rawTasks.filter(t=>!t?.itemNumber);
+        const needsNumber = missing.length === 1 && existing.join('|') === expectedSix;
+        const alreadyNumbered = missing.length === 0 && existing.join('|') === expectedSeven;
+        if (new Set(ids).size !== 7 || ids.some(id=>!id) ||
+            (!needsNumber && !alreadyNumbered))
+          throw new Error('Roh-Aufgabennummern nicht im erwarteten Zustand.');
+        const missingId = needsNumber ? missing[0].id : null;
+        if (!confirm('TEST: Den Aufgabenzähler 6 → 7' +
+            (needsNumber ? ' und die fehlende Nummer A-0007' : '') +
+            ' atomar auf Firebase reparieren? Lokaler Konflikt bleibt gesperrt.')) return;
+        recoveryPending = true;
+        phase = 'Atomare Firebase-Transaktion';
+        const result = await new Promise((resolve,reject) => {
+          roomRef.transaction(current => {
+            if (!current || !sameRemoteValue(current.mgmt,baseline.mgmt) ||
+                !sameRemoteValue(current.mgmtCounters,baseline.mgmtCounters) ||
+                !sameRemoteValue(current.activityFeed,baseline.activityFeed) ||
+                !sameRemoteValue(current.rewardLedger,baseline.rewardLedger) ||
+                !sameRemoteValue(current.deletedRewardKeys,baseline.deletedRewardKeys)) return;
+            const next = sanitizeForFirebase(current);
+            if (needsNumber) {
+              const target = next.mgmt.aufgaben.find(t=>t?.id===missingId);
+              if (!target || target.itemNumber) return;
+              target.itemNumber = 'A-0007';
+            }
+            next.mgmtCounters.aufgaben = 7;
+            return next;
+          },(error,committed)=>error ? reject(error) : resolve(committed),false);
+        });
+        if (!result) throw new Error('Serverstand inzwischen verändert. Keine Reparatur ausgeführt.');
+        phase = 'Frischen Serverstand verifizieren';
+        const verified = (await roomRef.once('value')).val();
+        const numbers = verified?.mgmt?.aufgaben?.map(t=>t?.itemNumber).sort().join('|');
+        if (Number(verified?.mgmtCounters?.aufgaben) !== 7 ||
+            numbers !== expectedSeven ||
+            !sameRemoteValue(verified.activityFeed,baseline.activityFeed) ||
+            !sameRemoteValue(verified.rewardLedger,baseline.rewardLedger))
+          throw new Error('Nachprüfung fehlgeschlagen; Konfliktsperre bleibt bestehen.');
+        showTestDiagnosticReport('TEST – ZÄHLER 7 REPARIERT UND GEPRÜFT\\n' +
+          'Server-Aufgaben: 7\\nServer-Zähler: 7\\nAufgabennummern: A-0001 bis A-0007\\n' +
+          'Konfliktsperre bleibt aktiv. Bitte Serverstand erneut prüfen.');
+      } catch (error) {
+        showTestDiagnosticReport('TEST – ZÄHLERREPARATUR NICHT BESTÄTIGT\\nPhase: '+
+          phase+'\\nGrund: '+(error?.message || String(error))+
+          '\\nKonfliktsperre unverändert. Bitte Bericht senden.');
+      } finally {
+        recoveryPending = false;
+        if (button) button.disabled = false;
+      }
     }
 
     // Explicitly approved TEST-only recovery. Preserve the draft and conflict lock
