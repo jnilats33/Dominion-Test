@@ -217,11 +217,15 @@ function changedRows(before,after) {
   return (Array.isArray(after)?after:[]).filter(x=>x?.id && JSON.stringify(prev.get(x.id))!==JSON.stringify(x))
     .map(x=>({old:prev.get(x.id),item:x}));
 }
+function changedFields(old,item,keys) {
+  return keys.some(key => JSON.stringify(old?.[key] ?? null) !== JSON.stringify(item?.[key] ?? null));
+}
 exports.notifyTestShopping = onValueWritten({
   ref:`/rooms/${ROOM}/einkauf`,instance:'dominionapp-45bfa-default-rtdb',
   region:REGION,maxInstances:2,retry:false
 },async event=>{
   for(const {old,item} of changedRows(event.data.before.val(),event.data.after.val()).slice(0,20)){
+    if(old && !changedFields(old,item,['name','note','done']))continue;
     const actor=old?item.lastEditedBy:item.createdBy;
     if(!ROLES.has(actor))continue;
     await notifyOtherRole(actor,otherRole(actor),'Einkaufsliste',
@@ -233,6 +237,7 @@ exports.notifyTestPenalty = onValueWritten({
   region:REGION,maxInstances:2,retry:false
 },async event=>{
   for(const {old,item} of changedRows(event.data.before.val(),event.data.after.val()).slice(0,20)){
+    if(old && !changedFields(old,item,['reason','measure','resolved']))continue;
     const actor=old?item.lastEditedBy:item.createdBy;
     if(!ROLES.has(actor))continue;
     await notifyOtherRole(actor,otherRole(actor),'Strafbuch',
@@ -256,9 +261,12 @@ exports.notifyTestRewards = onValueWritten({
   region:REGION,maxInstances:2,retry:false
 },async event=>{
   for(const {old,item} of changedRows(event.data.before.val(),event.data.after.val()).slice(0,20)){
+    if(old && (old.redemption?.status === item.redemption?.status ||
+        item.redemption?.status !== 'completed'))continue;
+    if(!old && !item.redemption)continue;
     const actor=old?item.redemption?.completedBy:item.actorRole;
     if(!ROLES.has(actor))continue;
     await notifyOtherRole(actor,otherRole(actor),'Belohnungen und Einlösungen',
-      old?'Einlösung abgeschlossen':'Neue Buchung oder Einlösung','rewards');
+      old?'Einlösung abgeschlossen':'Neue Einlösung','rewards');
   }
 });
