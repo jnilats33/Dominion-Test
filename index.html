@@ -1955,12 +1955,23 @@
             const localTaskCount = Array.isArray(localTasks) ? localTasks.length : 'keine Liste';
             const serverTaskCount = Array.isArray(remoteTasks) ? remoteTasks.length : 'keine Liste';
             const serverTaskCounter = raw.mgmtCounters?.aufgaben ?? 'nicht vorhanden';
+            const localTaskCounter = draft.drafts.mgmtCounters?.aufgaben ?? 'nicht im Entwurf';
+            const serverNumbers = Array.isArray(remoteTasks)
+              ? remoteTasks.map(t => String(t?.itemNumber ?? '(ohne Nummer)')) : [];
+            const rawServerNumbers = Array.isArray(raw.mgmt?.aufgaben)
+              ? raw.mgmt.aufgaben.map(t => String(t?.itemNumber ?? '(ohne Nummer)')) : [];
+            const serverMaxNumber = serverNumbers.reduce((max, number) =>
+              /^A-\\d+$/.test(number) ? Math.max(max, Number(number.slice(2))) : max, 0);
             if (!Array.isArray(localTasks) || !Array.isArray(remoteTasks) ||
                 localTasks.length < 5 || localTasks.length !== remoteTasks.length ||
                 Number(raw.mgmtCounters?.aufgaben) !== remoteTasks.length)
               throw new Error('Aufgabenbestand oder Zähler nicht mehr wie geprüft. ' +
                 'Lokal: ' + localTaskCount + ', Server: ' + serverTaskCount +
-                ', Server-Zähler: ' + serverTaskCounter + '.');
+                ', Server-Zähler: ' + serverTaskCounter +
+                ', lokaler Entwurfszähler: ' + localTaskCounter +
+                ', höchste normalisierte Aufgabennummer: ' + serverMaxNumber +
+                ', Servernummern: ' + serverNumbers.join(', ') +
+                ', rohe Servernummern: ' + rawServerNumbers.join(', ') + '.');
             const omitKnownEmpty = (value, context) => {
               if (Array.isArray(value))
                 return value.map(v=>omitKnownEmpty(v,context));
