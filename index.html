@@ -1639,6 +1639,49 @@
             }
             if (saved.drafts.mgmtCounters)
               lines.push(...describe(saved.drafts.mgmtCounters,normalized.mgmtCounters,'Zähler').slice(0,20));
+            lines.push('--- Technische Gleichheitsprüfung (nur Metadaten) ---');
+            const shape = v => ({
+              type: v === null ? 'null' : Array.isArray(v) ? 'array' : typeof v,
+              keys: v && typeof v === 'object' ? Object.keys(v).length : 0,
+              jsonLength: JSON.stringify(v)?.length ?? -1,
+              canonicalLength: JSON.stringify(canonicalRemoteValue(v))?.length ?? -1
+            });
+            const inspect = (label,a,b) => {
+              const ca = JSON.stringify(canonicalRemoteValue(a));
+              const cb = JSON.stringify(canonicalRemoteValue(b));
+              let at = 0;
+              while (at < Math.min(ca?.length ?? 0,cb?.length ?? 0) && ca[at]===cb[at]) at++;
+              lines.push(label+': '+JSON.stringify({
+                equal: ca===cb,
+                local: shape(a),server: shape(b),
+                firstDifferentCharacter: ca===cb ? -1 : at,
+                localIsArray: Array.isArray(a),serverIsArray: Array.isArray(b)
+              }));
+            };
+            if (Array.isArray(draftTasks)) {
+              const serverTasks = new Map(normalized.mgmt.aufgaben.map(t=>[t.id,t]));
+              draftTasks.forEach((t,i)=>{
+                const other = serverTasks.get(t.id);
+                if (other && !sameRemoteValue(t,other)) inspect('Aufgabe '+(i+1),t,other);
+              });
+            }
+            if (Array.isArray(localFeed) && Array.isArray(serverFeed)) {
+              const identity = x => String(x?.id ?? '') || JSON.stringify([x?.timestamp,x?.type]);
+              const groups = new Map();
+              for (const item of serverFeed) {
+                const key=identity(item);
+                if(!groups.has(key)) groups.set(key,[]);
+                groups.get(key).push(item);
+              }
+              localFeed.forEach((item,i)=>{
+                const group=groups.get(identity(item));
+                if (!group?.length) return;
+                const other=group.shift();
+                if (!sameRemoteValue(item,other)) inspect('Aktivität '+(i+1),item,other);
+              });
+            }
+            if (saved.drafts.mgmtCounters)
+              inspect('Zähler',saved.drafts.mgmtCounters,normalized.mgmtCounters);
             lines.push('KEINE DATEN GESCHRIEBEN. KONFLIKTSPERRE BLEIBT AKTIV.');
             const report = lines.join('\n');
             const overlay = document.createElement('div');
