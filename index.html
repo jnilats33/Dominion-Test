@@ -5072,21 +5072,94 @@
         task.history = [];
       });
     }
+    // Deadline penalties are a single logical operation. Never persist the
+    // task status separately from its ledger entry.
+    let deadlineTransactionPending = false;
     function processTaskDeadlines() {
       migrateLegacyTasks();
-      let changed = false;
-      for (const task of appState.mgmt.aufgaben) {
-        if (task.assignee !== 'Daisy' || task.taskKind === 'personal' || task.status !== 'open' || !task.deadline) continue;
-        const deadlineTime = new Date(task.deadline).getTime();
-        if (!Number.isFinite(deadlineTime) || Date.now() <= deadlineTime) continue;
-        const key = 'task:' + task.id + ':late:' + (task.cycle || 0);
-        bookReward(key, -rewardAmount(task.minusPoints), 'Frist überschritten: ' + task.title);
-        task.status = 'overdue';
-        (task.history ||= []).push({ event: 'Frist überschritten', at: Date.now() });
-        changed = true;
-      }
-      if (changed) persistState();
-      return changed;
+      if (deadlineTransactionPending || !firebaseDbRef || !productionRoomLoaded ||
+          productionSyncConflict || isApplyingRemoteUpdate || recoveryPending ||
+          pendingCollectionWrites.size || !lastRemoteState || !lastRemoteRawState ||
+          firebaseRoomPathPending !== DEVELOPMENT_TEST_ROOM) return false;
+      // Do not overwrite unsaved local task or ledger edits with a root transaction.
+      if (!sameRemoteValue(appState.mgmt, lastRemoteState.mgmt) ||
+          !sameRemoteValue(appState.rewardLedger, lastRemoteState.rewardLedger)) return false;
+      const now = Date.now();
+      const task = appState.mgmt.aufgaben.find(t =>
+        t.assignee === 'Daisy' && t.taskKind !== 'personal' &&
+        t.status === 'open' && t.deadline &&
+        Number.isFinite(new Date(t.deadline).getTime()) &&
+        now > new Date(t.deadline).getTime());
+      if (!task) return false;
+      const id = task.id;
+      const cycle = task.cycle || 0;
+      const key = 'task:' + id + ':late:' + cycle;
+      const amount = -rewardAmount(task.minusPoints);
+      const roomRef = firebaseDbRef;
+      deadlineTransactionPending = true;
+      (async () => {
+        try {
+          // Prime the SDK cache, then use a root transaction to update only
+          // mgmt and rewardLedger while retaining every other live field.
+          const baseline = (await roomRef.once('value')).val();
+          if (!baseline || roomRef !== firebaseDbRef || productionSyncConflict ||
+              !productionRoomLoaded || pendingCollectionWrites.size ||
+              !sameRemoteValue(baseline.mgmt, lastRemoteRawState?.mgmt) ||
+              !sameRemoteValue(baseline.rewardLedger, lastRemoteRawState?.rewardLedger))
+            return;
+          const serverTask = baseline.mgmt?.aufgaben?.find(t => t?.id === id);
+          if (!serverTask || serverTask.status !== 'open' ||
+              serverTask.deadline !== task.deadline ||
+              Number(serverTask.minusPoints || 0) !== Number(task.minusPoints || 0) ||
+              (serverTask.cycle || 0) !== cycle ||
+              !Array.isArray(baseline.rewardLedger) ||
+              baseline.rewardLedger.some(row => row?.id === key) ||
+              (baseline.deletedRewardKeys || []).includes(key)) return;
+          const eventTime = Date.now();
+          const actorRole = currentRole;
+          let changed = false;
+          const result = await new Promise((resolve,reject) => {
+            roomRef.transaction(current => {
+              changed = false;
+              if (!current || !sameRemoteValue(current.mgmt, baseline.mgmt) ||
+                  !sameRemoteValue(current.rewardLedger, baseline.rewardLedger) ||
+                  !sameRemoteValue(current.mgmtCounters, baseline.mgmtCounters)) return;
+              const target = current.mgmt?.aufgaben?.find(t => t?.id === id);
+              if (!target || target.status !== 'open' ||
+                  target.deadline !== task.deadline ||
+                  (target.cycle || 0) !== cycle ||
+                  !Array.isArray(current.rewardLedger) ||
+                  current.rewardLedger.some(row => row?.id === key) ||
+                  (current.deletedRewardKeys || []).includes(key)) return;
+              const next = sanitizeForFirebase(current);
+              const nextTask = next.mgmt.aufgaben.find(t => t.id === id);
+              nextTask.status = 'overdue';
+              (nextTask.history ||= []).push({event:'Frist überschritten',at:eventTime});
+              if (amount) next.rewardLedger.push({
+                id:key, amount, description:'Frist überschritten: ' + nextTask.title,
+                timestamp:eventTime, actorRole
+              });
+              changed = true;
+              return next;
+            },(error,committed,snapshot)=>{
+              if (error) reject(error); else resolve({committed,snapshot});
+            },false);
+          });
+          if (result.committed && changed) {
+            // Listener applies the authoritative server snapshot. Do not
+            // locally re-book the penalty or call persistState().
+            console.info('TEST: Fristüberschreitung atomar gespeichert', id);
+          } else {
+            console.info('TEST: Fristüberschreitung nicht geschrieben; Serverstand erneut prüfen', id);
+          }
+        } catch (error) {
+          console.warn('TEST: atomare Fristbuchung fehlgeschlagen; keine lokale Teilbuchung',error);
+          showToast('Fristbuchung nicht bestätigt. Bitte Synchronisation prüfen.','error');
+        } finally {
+          deadlineTransactionPending = false;
+        }
+      })();
+      return false;
     }
     function updateTaskForm() {
       const assignee = document.getElementById('task-assignee').value;
