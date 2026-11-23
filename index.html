@@ -523,6 +523,17 @@
         </div>
       </section>
 
+      <!-- Ideengeber: ausschließlich lokale Formularhilfe, ohne Server-Schreibzugriff -->
+      <div id="dominion-ideas-dialog" class="hidden fixed inset-0 z-[120] bg-black/80 backdrop-blur-sm overflow-y-auto p-4" role="dialog" aria-modal="true" aria-labelledby="dominion-ideas-title" onclick="if(event.target===this)closeDominionIdeas()">
+        <div class="max-w-lg mx-auto my-10 rounded-2xl border border-amber-500/30 bg-[#202331] p-5 shadow-2xl space-y-4">
+          <div class="flex items-center justify-between"><h3 id="dominion-ideas-title" class="font-semibold text-amber-200">💡 Ideengeber</h3><button type="button" onclick="closeDominionIdeas()" aria-label="Schließen" class="px-3 py-1 rounded-lg bg-white/10">✕</button></div>
+          <div id="dominion-ideas-progress" class="text-xs text-slate-400"></div>
+          <h4 id="dominion-ideas-name" class="font-semibold text-lg text-white"></h4>
+          <p id="dominion-ideas-description" class="text-sm text-slate-300"></p>
+          <p class="text-xs text-slate-500">Ein Vorschlag füllt nur das Formular aus. Gespeichert wird erst mit dem regulären Speichern-Button.</p>
+          <div class="flex flex-wrap gap-2"><button type="button" onclick="nextDominionIdea()" class="px-3 py-2 rounded-xl bg-white/10 text-sm">🔀 Andere Idee</button><button type="button" onclick="applyDominionIdea()" class="px-3 py-2 rounded-xl gold-gradient text-sm font-semibold">Übernehmen</button></div>
+        </div>
+      </div>
       <!-- ==================== 3. KALENDER ==================== -->
       <section id="tab-kalender" class="hidden space-y-4 animate-fade">
         <div class="glass-card rounded-2xl p-5 space-y-4">
@@ -667,6 +678,7 @@
           <div id="mgmt-add-box" class="grid grid-cols-1 sm:grid-cols-3 gap-2.5 mb-5 p-3.5 rounded-xl bg-white/[0.03] border border-slate-800">
             <input id="mgmt-title" type="text" placeholder="Bezeichnung..." class="px-3.5 py-2.5 text-sm" />
             <input id="mgmt-desc" type="text" placeholder="Details / Beschreibung..." class="px-3.5 py-2.5 text-sm" /><label id="mgmt-points-wrap" class="hidden text-xs text-slate-300">Punktwert<input id="mgmt-points" type="number" min="0" step="1" value="0" class="w-full mt-1 px-3 py-2 rounded-lg" /></label>
+            <button id="mgmt-ideas-button" type="button" onclick="openDominionIdeas(activeMgmtCategory)" class="hidden sm:col-span-3 col-span-1 text-left text-xs px-3 py-2 rounded-lg bg-amber-500/10 border border-amber-500/30 text-amber-200 hover:bg-amber-500/20">💡 Ideen ansehen – 10 Vorschläge</button>
             <div class="flex gap-2"><button id="mgmt-submit-button" onclick="addMgmtItem()" class="flex-1 px-4 py-2.5 rounded-xl gold-gradient font-semibold text-sm">Anlegen</button><button id="mgmt-cancel-edit" onclick="cancelMgmtEdit()" class="hidden px-3 py-2.5 rounded-xl bg-white/10 text-slate-300 text-sm">Abbrechen</button></div>
             <div id="mgmt-bonus-hint" class="hidden sm:col-span-3 text-xs text-emerald-300"></div>
             <div id="mgmt-image-controls" class="hidden sm:col-span-3 col-span-1 space-y-2">
@@ -697,6 +709,7 @@
             <div class="max-w-xl mx-auto my-4 sm:my-10 rounded-2xl border border-slate-700 bg-[#202331] shadow-2xl p-5 sm:p-6 space-y-4">
               <div class="flex items-center justify-between gap-3"><h3 id="task-dialog-title" class="text-lg font-semibold text-white">Neue Aufgabe anlegen</h3><button type="button" onclick="closeTaskDialog()" aria-label="Schließen" class="px-3 py-1 rounded-lg bg-slate-800 text-slate-300">✕</button></div>
               <div id="tasks-form" class="space-y-3">
+            <button type="button" onclick="openDominionIdeas('aufgaben')" class="w-full text-left text-xs px-3 py-2 rounded-lg bg-amber-500/10 border border-amber-500/30 text-amber-200 hover:bg-amber-500/20">💡 Ideen für Aufgaben ansehen</button>
             <input id="task-title" placeholder="Neue Aufgabe" class="w-full px-3 py-2.5"/>
             <textarea id="task-desc" placeholder="Beschreibung (optional)" class="w-full px-3 py-2.5"></textarea>
             <div class="grid grid-cols-2 gap-2">
@@ -5895,6 +5908,101 @@
       const entries = REWARD_GALLERY[cat] || [];
       return entries.length ? entries[Math.floor(Math.random()*entries.length)][0] : null;
     }
+    // Fest eingebaute, rollen- und namensneutrale Ideen. Kein Firebase-Zugriff.
+    const DOMINION_IDEAS = {
+      aufgaben: [
+        ['Morgenritual gestalten','Entwickle ein kleines, gemeinsames Morgenritual und halte die vereinbarten Schritte fest.'],
+        ['Eine Überraschung planen','Bereite eine kleine Überraschung für die andere Person vor.'],
+        ['Wochenziel festlegen','Wähle ein realistisches persönliches Ziel und dokumentiere den Fortschritt.'],
+        ['Achtsamkeitsmoment','Nimm dir zehn Minuten Zeit für eine bewusste Pause und beschreibe anschließend deine Eindrücke.'],
+        ['Wunschliste erstellen','Schreibe fünf Ideen für gemeinsame Erlebnisse auf.'],
+        ['Ein Ritual zuverlässig einhalten','Halte ein vorher gemeinsam vereinbartes Ritual für eine Woche ein.'],
+        ['Aufmerksamkeit zeigen','Überlege dir eine persönliche Geste der Wertschätzung und setze sie um.'],
+        ['Rollenspiel vorbereiten','Entwirf eine freiwillige Szene mit Rollen, Ablauf und klaren Grenzen.'],
+        ['Ein besonderes Outfit wählen','Stelle ein Outfit für einen gemeinsam vereinbarten Anlass zusammen.'],
+        ['Gemeinsamer Rückblick','Besprecht, was in der letzten Woche gut funktioniert hat und was ihr ändern möchtet.']
+      ],
+      belohnungen: [
+        ['Ein Abend nach Wunsch','Die belohnte Person darf das gemeinsame Abendprogramm auswählen.'],
+        ['Lieblingsessen','Ein selbst gekochtes oder bestelltes Lieblingsgericht nach Wahl.'],
+        ['Eine kleine Überraschung','Eine persönliche Aufmerksamkeit als Dankeschön.'],
+        ['Zeit zu zweit','Ein ungestörter gemeinsamer Abend ohne Ablenkung.'],
+        ['Wunschaktivität','Eine vorher vereinbarte Freizeitaktivität nach Wahl.'],
+        ['Ein Privileg für einen Tag','Ein zusätzliches, gemeinsam vereinbartes Privileg für einen Tag.'],
+        ['Ein Wunschritual','Ein besonderes, freiwilliges Ritual nach den Wünschen der belohnten Person.'],
+        ['Entspannungszeit','Ein ruhiger Abend mit Musik, Tee oder einem Wohlfühlprogramm.'],
+        ['Ein besonderer Ausflug','Ein kleiner Ausflug oder Spaziergang zu einem Wunschziel.'],
+        ['Freie Wahl','Die belohnte Person darf zwischen drei vorher vereinbarten Optionen wählen.']
+      ],
+      strafen: [
+        ['Zusätzliche Haushaltsaufgabe','Eine vorher vereinbarte, angemessene zusätzliche Aufgabe übernehmen.'],
+        ['Reflexion schreiben','Kurz notieren, was passiert ist und wie es künftig besser laufen kann.'],
+        ['Privileg aussetzen','Ein freiwillig vereinbartes, nicht wesentliches Privileg zeitweise pausieren.'],
+        ['Ordnung schaffen','Einen ausgewählten Bereich aufräumen und ordentlich hinterlassen.'],
+        ['Wiedergutmachung','Eine passende Geste vereinbaren, um einen Fehler auszugleichen.'],
+        ['Zusatzaufgabe erfüllen','Eine kleine, zumutbare Zusatzaufgabe innerhalb einer vereinbarten Frist erledigen.'],
+        ['Regel gemeinsam überprüfen','Eine bestehende Regel lesen und gemeinsam ihre Bedeutung besprechen.'],
+        ['Punkteabzug vereinbaren','Einen moderaten, vorher vereinbarten Punkteabzug festlegen.'],
+        ['Verantwortung übernehmen','Einen konkreten Plan zur Verbesserung formulieren und umsetzen.'],
+        ['Ritual wiederholen','Ein freiwillig vereinbartes Übungsritual noch einmal sorgfältig durchführen.']
+      ]
+    };
+    let dominionIdeaSession = null;
+    function openDominionIdeas(category) {
+      if (!DOMINION_IDEAS[category]) return;
+      if (category === 'aufgaben' && currentRole !== 'Master' && !hasPermission('aufgaben','add')) return;
+      if (category !== 'aufgaben' && !(hasPermission(category,'add') || (mgmtEditingItemId && hasPermission(category,'edit')))) return;
+      const order = DOMINION_IDEAS[category].map((_, i) => i);
+      for (let i = order.length - 1; i > 0; i--) {
+        const j = Math.floor(Math.random() * (i + 1));
+        [order[i],order[j]] = [order[j],order[i]];
+      }
+      dominionIdeaSession = {category, order, index:0};
+      document.getElementById('dominion-ideas-title').textContent = '💡 Ideen für ' + ({aufgaben:'Aufgaben',belohnungen:'Belohnungen',strafen:'Strafen'}[category]);
+      document.getElementById('dominion-ideas-dialog').classList.remove('hidden');
+      renderDominionIdea();
+    }
+    function renderDominionIdea() {
+      const session = dominionIdeaSession;
+      if (!session) return;
+      const idea = DOMINION_IDEAS[session.category][session.order[session.index]];
+      document.getElementById('dominion-ideas-progress').textContent = 'Vorschlag ' + (session.index+1) + ' von ' + session.order.length;
+      document.getElementById('dominion-ideas-name').textContent = idea[0];
+      document.getElementById('dominion-ideas-description').textContent = idea[1];
+    }
+    function nextDominionIdea() {
+      if (!dominionIdeaSession) return;
+      const session = dominionIdeaSession;
+      session.index++;
+      if (session.index >= session.order.length) {
+        session.index = 0;
+        for (let i = session.order.length-1; i>0; i--) {
+          const j = Math.floor(Math.random()*(i+1));
+          [session.order[i],session.order[j]]=[session.order[j],session.order[i]];
+        }
+      }
+      renderDominionIdea();
+    }
+    function closeDominionIdeas() {
+      document.getElementById('dominion-ideas-dialog').classList.add('hidden');
+      dominionIdeaSession = null;
+    }
+    function applyDominionIdea() {
+      const session = dominionIdeaSession;
+      if (!session) return;
+      const idea = DOMINION_IDEAS[session.category][session.order[session.index]];
+      if (session.category === 'aufgaben') {
+        if (document.getElementById('task-dialog').classList.contains('hidden')) return closeDominionIdeas();
+        document.getElementById('task-title').value = idea[0];
+        document.getElementById('task-desc').value = idea[1];
+      } else {
+        if (activeMgmtCategory !== session.category || document.getElementById('mgmt-add-box').classList.contains('hidden')) return closeDominionIdeas();
+        document.getElementById('mgmt-title').value = idea[0];
+        document.getElementById('mgmt-desc').value = idea[1];
+      }
+      closeDominionIdeas();
+    }
+
     function renderVerwaltung() {
       const visibleCats = MGMT_CATEGORIES.filter(cat => cat.id !== 'aufgaben' && hasPermission(cat.id, 'visible'));
       const subTabsEl = document.getElementById('verwaltung-subtabs');
@@ -5923,6 +6031,8 @@
       `).join('');
 
       const canAdd = hasPermission(activeMgmtCategory, 'add');
+      const ideasButton = document.getElementById('mgmt-ideas-button');
+      if (ideasButton) ideasButton.classList.toggle('hidden', !['belohnungen','strafen'].includes(activeMgmtCategory) || (!canAdd && !(mgmtEditingItemId && hasPermission(activeMgmtCategory,'edit'))));
       const canEdit = hasPermission(activeMgmtCategory, 'edit');
       const canDelete = hasPermission(activeMgmtCategory, 'delete');
       const isEditing = !!mgmtEditingItemId;
