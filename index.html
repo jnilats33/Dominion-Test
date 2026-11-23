@@ -1148,7 +1148,8 @@
           editOwn: cat.id === 'einkauf' || cat.id === 'aufgaben',
           editOthers: cat.id === 'einkauf' || cat.id === 'aufgaben',
           deleteOwn: false,
-          deleteOthers: false
+          deleteOthers: false,
+          reviewRequired: false
         };
       });
       return perms;
@@ -3772,8 +3773,10 @@
       finally { pushSaving=false; renderPushPrefs(); }
     }
     function canChangeEntry(category, action, entry) {
+      if (entry?.masterLocked === true) return false;
       if (currentRole === 'Master') return true;
       if (!entry || !['edit','delete'].includes(action)) return false;
+      if (entry.masterLocked === true) return false;
       const permissions = appState.permissions?.[category];
       if (!permissions || !permissions.visible) return false;
       // Unknown authorship is treated as foreign; never infer from assignee or owner.
@@ -6092,6 +6095,7 @@
             ${rewardImage(item,activeMgmtCategory) ? `<img src="${escapeHtml(rewardImage(item,activeMgmtCategory))}" alt="${escapeHtml(item.title)}" class="rounded-xl max-h-56 w-auto mt-2 border border-slate-700" />` : ''}
           </div>
           <div class="flex items-center gap-1.5 shrink-0">
+            ${currentRole === 'Master' ? `<button onclick="toggleMgmtMasterLock('${activeMgmtCategory}', '${item.id}')" class="p-2 rounded-lg bg-white/5 hover:bg-white/10 text-xs" title="${item.masterLocked ? 'Eintrag entsperren' : 'Eintrag vor Änderungen und Löschen schützen'}">${item.masterLocked ? '🔒' : '🔓'}</button>` : (item.masterLocked ? '<span title="Durch Master gesperrt">🔒</span>' : '')}
             ${canChangeEntry(activeMgmtCategory, 'edit', item) ? `<button onclick="editMgmtItem('${activeMgmtCategory}', '${item.id}')" class="p-2 rounded-lg bg-amber-500/10 hover:bg-amber-500/25 text-amber-300 text-xs" title="Bearbeiten">✏️</button>` : ''}
             ${canChangeEntry(activeMgmtCategory, 'delete', item) ? `<button onclick="deleteMgmtItem('${activeMgmtCategory}', '${item.id}')" class="p-2 rounded-lg bg-rose-500/10 hover:bg-rose-500/25 text-rose-400 text-xs" title="Löschen">🗑️</button>` : ''}
           </div>
@@ -6205,6 +6209,15 @@
       logActivity(`hat Aufgabe ${item.done ? 'erledigt' : 'geöffnet'}: „${item.title}“`, 'verwaltung', catId, item.id);
       persistState();
       refreshAllUI();
+    }
+
+    function toggleMgmtMasterLock(catId, itemId) {
+      if (currentRole !== 'Master' || !MGMT_CATEGORIES.some(c => c.id === catId)) return;
+      const item = (appState.mgmt?.[catId] || []).find(x => x.id === itemId);
+      if (!item) return;
+      item.masterLocked = !item.masterLocked;
+      logActivity('hat Eintrag ' + (item.masterLocked ? 'gesperrt' : 'entsperrt') + ': „' + (item.title || '') + '“', 'verwaltung', catId, item.id);
+      persistState(); refreshAllUI();
     }
 
     function deleteMgmtItem(catId, itemId) {
@@ -6515,6 +6528,15 @@
       }
       const table = tbody.closest('table');
       const header = table?.querySelector('thead tr');
+      if (header && !header.querySelector('[data-review-heading]')) {
+        const pointsHeading = header.querySelector('[data-points-heading]');
+        const th = document.createElement('th');
+        th.dataset.reviewHeading = 'true';
+        th.className = 'p-2 text-center text-xs';
+        th.textContent = 'Prüfung';
+        th.title = 'Freigabe vor Übernahme in den Bestand (wird in einem nächsten Schritt aktiviert)';
+        header.insertBefore(th, pointsHeading || null);
+      }
       if (header && !header.querySelector('[data-points-heading]')) header.insertAdjacentHTML('beforeend', '<th data-points-heading class="p-2 text-center text-xs" title="Punkte je neuem Eintrag von Daisy">🎯 Punkte</th>');
       tbody.innerHTML = PERMISSION_CATEGORIES.map(cat => {
         const p = appState.permissions[cat.id] || { visible: true, add: false, edit: false, delete: false };
@@ -6528,6 +6550,7 @@
                        class="w-4 h-4 accent-[#c9973e] rounded cursor-pointer" />
               </td>
             `).join('')}
+            <td class="p-2 text-center"><input type="checkbox" disabled title="Freigabe-Workflow noch nicht aktiviert – sicherheitshalber gesperrt" class="w-4 h-4 opacity-40" /></td>
             ${['kleidung', 'toys', 'belohnungen', 'strafen', 'regeln'].includes(cat.id) ? `<td class="p-2 text-center"><input aria-label="Punkte für ${cat.label}" title="Punkte pro neuem Eintrag durch Daisy" type="number" min="0" step="1" value="${rewardAmount(appState.rewardRules?.[cat.id])}" onchange="saveRewardRule('${cat.id}',this.value)" class="w-16 max-w-full px-2 py-1.5 text-xs rounded-lg" /></td>` : '<td class="p-2 text-center text-slate-600">–</td>'}
           </tr>
         `;
