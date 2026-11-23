@@ -694,7 +694,7 @@
               <input id="mgmt-image-camera" type="file" accept="image/*" capture="environment" class="hidden" onchange="handleMgmtImageSelect(event)" />
               <div id="mgmt-gallery" class="hidden"></div>
               <div id="mgmt-image-preview" class="hidden w-full min-w-0 overflow-hidden">
-                <img id="mgmt-image-preview-img" alt="Bildvorschau" class="block w-40 h-40 max-w-full object-contain rounded-xl border border-slate-700 bg-slate-900" />
+                <img id="mgmt-image-preview-img" alt="Bildvorschau" class="block w-40 h-40 max-w-full object-contain rounded-xl border-2 border-[#e8b95c] bg-slate-900" />
               </div>
             </div>
           </div>
@@ -6451,7 +6451,7 @@
             </div>
             ${rewardCategory ? `<p class="text-xs text-amber-300">Punktwert: ${activeMgmtCategory === 'strafen' ? '−' : '+'}${rewardAmount(item.rewardPoints)}</p>` : ''}
             ${item.desc ? `<p class="text-xs text-slate-400 mt-1 break-words">${escapeHtml(item.desc)}</p>` : ''}
-            ${rewardImage(item,activeMgmtCategory) ? `<img src="${escapeHtml(rewardImage(item,activeMgmtCategory))}" alt="${escapeHtml(item.title)}" class="rounded-xl max-h-56 w-auto mt-2 border border-slate-700" />` : ''}
+            ${rewardImage(item,activeMgmtCategory) ? `<img src="${escapeHtml(rewardImage(item,activeMgmtCategory))}" alt="${escapeHtml(item.title)}" class="rounded-xl max-h-56 max-w-full w-auto mt-2 border-2 border-[#e8b95c]" />` : ''}
           </div>
           <div class="flex items-center gap-1.5 shrink-0">
             ${currentRole === 'Master' ? `<button onclick="toggleMgmtMasterLock('${activeMgmtCategory}', '${item.id}')" class="p-2 rounded-lg bg-white/5 hover:bg-white/10 text-xs" title="${item.masterLocked ? 'Eintrag entsperren' : 'Eintrag vor Änderungen und Löschen schützen'}">${item.masterLocked ? '🔒' : '🔓'}</button>` : (item.masterLocked ? '<span title="Durch Master gesperrt">🔒</span>' : '')}
