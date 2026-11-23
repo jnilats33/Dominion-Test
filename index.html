@@ -786,7 +786,12 @@
                 <p class="text-xs text-slate-400">Wähle die Kacheln der Übersicht aus. Daisy sieht nur freigegebene Bereiche.</p>
                 <div id="dashboard-metric-visibility-options" class="grid grid-cols-1 sm:grid-cols-2 gap-2"></div>
               </div>
-              <p class="text-[11px] text-slate-500">Diese Ansicht wird für deine Rolle auf diesem Gerät gespeichert.</p>
+              <div class="border-t border-slate-800 pt-4 space-y-3">
+                <h3 class="font-semibold text-sm text-white">📜 Activity Stream</h3>
+                <p class="text-xs text-slate-400">Ereignisarten und handelnde Rolle auswählen. Master legt zusätzlich fest, was Daisy überhaupt sehen darf.</p>
+                <div id="activity-stream-filter-settings" class="space-y-3"></div>
+              </div>
+              <p class="text-[11px] text-slate-500">Deine persönliche Auswahl wird auf diesem Gerät gespeichert; Masters Freigaben für Daisy werden synchronisiert.</p>
             </div>
           </div>
 
@@ -3538,6 +3543,104 @@
       return roleKey;
     }
 
+    // Stream permissions: synchronized Master allowance, separate local role preferences.
+    const ACTIVITY_FILTER_KEY = 'dominion-test-activity-filter-v1';
+    const ACTIVITY_EVENT_TYPES = [
+      {id:'created',label:'Neu angelegt',actors:['Master','Daisy']},
+      {id:'changed',label:'Geändert / bearbeitet',actors:['Master','Daisy']},
+      {id:'deleted',label:'Gelöscht',actors:['Master','Daisy']},
+      {id:'completed',label:'Erledigt / Status geändert',actors:['Master','Daisy']},
+      {id:'submitted',label:'Antrag gestellt / erneut eingereicht',actors:['Daisy']},
+      {id:'revision',label:'Zur Nachbesserung zurückverwiesen',actors:['Master']},
+      {id:'approved',label:'Antrag freigegeben',actors:['Master']},
+      {id:'rejected',label:'Antrag abgelehnt',actors:['Master']},
+      {id:'other',label:'Sonstige Aktivitäten',actors:['Master','Daisy']}
+    ];
+    const ACTIVITY_FILTER_CATEGORIES = [
+      {id:'kleidung',label:'Kleidung'}, {id:'toys',label:'Toys'},
+      {id:'strafen',label:'Strafen'}, {id:'belohnungen',label:'Belohnungen'},
+      {id:'regeln',label:'Regeln'}, {id:'aufgaben',label:'Aufgaben'},
+      {id:'chat',label:'Chat'}, {id:'kalender',label:'Kalender'},
+      {id:'einkauf',label:'Einkauf'}, {id:'strafbuch',label:'Strafbuch'},
+      {id:'rewards',label:'Rewards'}, {id:'einstellungen',label:'Einstellungen'}
+    ];
+    function activityEventType(item) {
+      if (String(item.id || '').startsWith('application-feed-')) {
+        const action = String(item.action || '');
+        if (action.startsWith('Antrag gestellt')) return 'submitted';
+        if (action.startsWith('Zur Nachbesserung')) return 'revision';
+        if (action.startsWith('Antrag freigegeben')) return 'approved';
+        if (action.startsWith('Antrag abgelehnt')) return 'rejected';
+      }
+      const action = String(item.action || '').toLowerCase();
+      if (/gelöscht|entfernt/.test(action)) return 'deleted';
+      if (/hinzugefügt|angelegt|erstellt|eingetragen/.test(action)) return 'created';
+      if (/erledigt|abgeschlossen|geöffnet|status/.test(action)) return 'completed';
+      if (/geändert|bearbeitet|aktualisiert|angepasst/.test(action)) return 'changed';
+      return 'other';
+    }
+    function activityEventCategory(item) {
+      return item.targetTab === 'verwaltung' ? item.targetSubCategory : item.targetTab;
+    }
+    function activityFilterKey(cat,type,actor) { return cat + ':' + type + ':' + actor; }
+    function getActivityLocalPrefs() {
+      try { return JSON.parse(localStorage.getItem(ACTIVITY_FILTER_KEY + ':' + currentRole) || '{}') || {}; }
+      catch (_) { return {}; }
+    }
+    function setActivityLocalPref(cat,type,actor,enabled) {
+      const prefs = getActivityLocalPrefs();
+      prefs[activityFilterKey(cat,type,actor)] = enabled;
+      try { localStorage.setItem(ACTIVITY_FILTER_KEY + ':' + currentRole,JSON.stringify(prefs)); }
+      catch (_) { showToast('Ansicht konnte nicht gespeichert werden.','error'); return; }
+      renderActivityStreamFilterSettings();
+      renderDashboard();
+    }
+    function activityMasterAllowed(cat,type,actor) {
+      return appState.activityStreamAllowed?.[activityFilterKey(cat,type,actor)] !== false;
+    }
+    function setActivityMasterAllowed(cat,type,actor,enabled) {
+      if (currentRole !== 'Master') return;
+      if (!appState.activityStreamAllowed) appState.activityStreamAllowed = {};
+      appState.activityStreamAllowed[activityFilterKey(cat,type,actor)] = enabled;
+      persistState();
+      renderActivityStreamFilterSettings();
+      renderDashboard();
+    }
+    function isActivityStreamEventEnabled(item) {
+      const cat = activityEventCategory(item),type = activityEventType(item),actor = item.actorRole;
+      if (!cat || !['Master','Daisy'].includes(actor)) return true;
+      const key = activityFilterKey(cat,type,actor);
+      if (currentRole === 'Daisy' && !activityMasterAllowed(cat,type,actor)) return false;
+      return getActivityLocalPrefs()[key] !== false;
+    }
+    function renderActivityStreamFilterSettings() {
+      const box = document.getElementById('activity-stream-filter-settings');
+      if (!box || !currentRole) return;
+      const prefs = getActivityLocalPrefs();
+      const categories = ACTIVITY_FILTER_CATEGORIES.filter(c =>
+        currentRole === 'Master' || (c.id !== 'einstellungen' && hasPermission(c.id,'visible')));
+      box.innerHTML = categories.map(cat => {
+        const types = ACTIVITY_EVENT_TYPES.filter(type =>
+          !['submitted','revision','approved','rejected'].includes(type.id) ||
+          ['kleidung','toys','strafen','belohnungen','regeln'].includes(cat.id));
+        const rows = types.flatMap(type => type.actors.map(actor => ({type,actor})))
+          .filter(row => currentRole === 'Master' || activityMasterAllowed(cat.id,row.type.id,row.actor));
+        if (!rows.length) return '';
+        return `<details class="rounded-xl border border-slate-800 bg-white/[0.03] p-3">
+          <summary class="cursor-pointer text-sm font-semibold text-amber-200">${cat.label}</summary>
+          <div class="mt-3 space-y-2">${rows.map(row => {
+            const key = activityFilterKey(cat.id,row.type.id,row.actor);
+            return `<div class="flex flex-wrap items-center justify-between gap-2 border-b border-slate-800/70 pb-2 text-xs">
+              <span>${row.type.label} · von ${row.actor}</span>
+              <div class="flex items-center gap-3">
+                ${currentRole === 'Master' ? `<label class="flex items-center gap-1 text-slate-400">Daisy erlaubt <input type="checkbox" class="accent-amber-500" onchange="setActivityMasterAllowed('${cat.id}','${row.type.id}','${row.actor}',this.checked)" ${activityMasterAllowed(cat.id,row.type.id,row.actor) ? 'checked' : ''}></label>` : ''}
+                <label class="flex items-center gap-1">Anzeigen <input type="checkbox" class="accent-amber-500" onchange="setActivityLocalPref('${cat.id}','${row.type.id}','${row.actor}',this.checked)" ${prefs[key] !== false ? 'checked' : ''}></label>
+              </div>
+            </div>`;
+          }).join('')}</div></details>`;
+      }).join('');
+    }
+
     function logActivity(actionText, targetTab, targetSubCategory = null, targetItemId = null) {
       const actorName = getDisplayName(currentRole);
       let permissionKey = targetTab;
@@ -4402,9 +4505,9 @@
         !(e.targetTab === 'verwaltung' && reviewedItemIds.has(String(e.targetItemId || '')) &&
           typeof e.action === 'string' && e.action.includes('hinzugefügt:'))
       )].sort((a,b) => (b.timestamp || 0) - (a.timestamp || 0));
-      const visibleFeed = currentRole === 'Daisy'
-        ? rawFeed.filter(item => isActivityVisibleForDaisy(item))
-        : rawFeed;
+      const visibleFeed = rawFeed.filter(item =>
+        (currentRole !== 'Daisy' || isActivityVisibleForDaisy(item)) &&
+        isActivityStreamEventEnabled(item));
       const feedItems = visibleFeed.slice(0, limit);
       document.getElementById('feed-count-badge').textContent = `${feedItems.length} Einträge`;
 
@@ -6792,6 +6895,7 @@
       document.getElementById('settings-panel-ansicht').classList.toggle('hidden', activeSettingsSubTab !== 'ansicht');
       renderDashboardVisibilitySettings();
       renderDashboardMetricVisibilitySettings();
+      renderActivityStreamFilterSettings();
       document.getElementById('settings-panel-basics').classList.toggle('hidden', activeSettingsSubTab !== 'basics');
       document.getElementById('settings-panel-berechtigungen').classList.toggle('hidden', !isMaster || activeSettingsSubTab !== 'berechtigungen');
       document.getElementById('settings-panel-sicherheit').classList.toggle('hidden', !isMaster || activeSettingsSubTab !== 'sicherheit');
