@@ -6062,25 +6062,75 @@
       a.history = [...(a.history || []), {action:'edited',role:currentRole,at:Date.now()}];
       persistState(); refreshAllUI();
     }
-    function decideMgmtApplication(id, decision) {
-      if (currentRole !== 'Master' || !['approved','revision','rejected'].includes(decision)) return;
-      const a = (appState.mgmtApplications || []).find(x => x.id === id);
-      if (!a || a.status !== 'pending') return;
+    let mgmtDecisionPending = false;
+    async function decideMgmtApplication(id, decision) {
+      if (currentRole !== 'Master' || !['approved','revision','rejected'].includes(decision) || mgmtDecisionPending) return;
+      const application = (appState.mgmtApplications || []).find(x => x.id === id);
+      if (!application || application.status !== 'pending') return;
       let comment = '';
       if (decision !== 'approved') {
-        const entered = prompt(decision === 'revision' ? 'Kommentar zur Nachbesserung (optional):' : 'Ablehnungsgrund (optional):', a.comment || '');
+        const entered = prompt(decision === 'revision' ? 'Kommentar zur Nachbesserung (optional):' : 'Ablehnungsgrund (optional):', application.comment || '');
         if (entered === null) return;
         comment = entered.trim().slice(0, 2000);
       }
-      if (decision === 'approved') {
-        if (!Array.isArray(appState.mgmt[a.category])) return;
-        if (appState.mgmt[a.category].some(item => item.id === a.item.id)) return;
-        appState.mgmt[a.category].unshift({...a.item});
-        if (['kleidung','toys','belohnungen','strafen','regeln'].includes(a.category)) bookReward('item:' + a.item.id, rewardAmount(appState.rewardRules[a.category]), 'Freigegebener Eintrag: ' + a.item.title);
+      // No local fallback: application, catalog and reward ledger must commit together.
+      if (location.hostname !== 'jnilats33.github.io' ||
+          !location.pathname.startsWith('/Dominion-Test/') ||
+          firebaseRoomPathPending !== DEVELOPMENT_TEST_ROOM ||
+          !firebaseDbRef || !productionRoomLoaded || productionSyncConflict ||
+          isApplyingRemoteUpdate || recoveryPending || deadlineTransactionPending ||
+          taskCreationPending || pendingCollectionWrites.size ||
+          !lastRemoteState || !testAuthUser || testAuthRole !== 'Master' ||
+          !sameRemoteValue(appState.mgmtApplications,lastRemoteState.mgmtApplications) ||
+          !sameRemoteValue(appState.mgmt,lastRemoteState.mgmt) ||
+          !sameRemoteValue(appState.rewardLedger,lastRemoteState.rewardLedger)) {
+        showToast('Freigabe nicht ausgeführt: Synchronisation zuerst prüfen.', 'error');
+        return;
       }
-      a.status = decision; a.comment = comment; a.decidedAt = Date.now();
-      a.history = [...(a.history || []), {action:decision,role:currentRole,at:Date.now(),comment}];
-      persistState(); refreshAllUI();
+      mgmtDecisionPending = true;
+      const roomRef = firebaseDbRef;
+      const timestamp = Date.now();
+      try {
+        const baseline = (await roomRef.once('value')).val();
+        if (!baseline || roomRef !== firebaseDbRef || productionSyncConflict ||
+            !sameRemoteValue(baseline.mgmtApplications,lastRemoteState.mgmtApplications) ||
+            !sameRemoteValue(baseline.mgmt,lastRemoteState.mgmt) ||
+            !sameRemoteValue(baseline.rewardLedger,lastRemoteState.rewardLedger))
+          throw new Error('Serverstand unterscheidet sich vom lokalen Stand.');
+        const result = await new Promise((resolve,reject) => {
+          roomRef.transaction(current => {
+            if (!current || !sameRemoteValue(current,baseline)) return;
+            const next = sanitizeForFirebase(current);
+            const request = (next.mgmtApplications || []).find(x => x.id === id);
+            if (!request || request.status !== 'pending' || !request.item ||
+                !Array.isArray(next.mgmt?.[request.category])) return;
+            if (decision === 'approved') {
+              if (next.mgmt[request.category].some(item => item.id === request.item.id)) return;
+              next.mgmt[request.category].unshift({...request.item});
+              const key = 'item:' + request.item.id;
+              const amount = rewardAmount(next.rewardRules?.[request.category]);
+              if (amount > 0 && !(next.rewardLedger || []).some(row => row.id === key) &&
+                  !(next.deletedRewardKeys || []).includes(key)) {
+                if (!Array.isArray(next.rewardLedger)) next.rewardLedger = [];
+                next.rewardLedger.push({id:key,amount,description:'Freigegebener Eintrag: ' + request.item.title,
+                  timestamp,actorRole:'Master'});
+              }
+            }
+            request.status = decision;
+            request.comment = comment;
+            request.decidedAt = timestamp;
+            request.history = [...(request.history || []),{action:decision,role:'Master',at:timestamp,comment}];
+            return next;
+          },(error,committed,snapshot) => error ? reject(error) : resolve({committed,snapshot}),false);
+        });
+        if (!result.committed) throw new Error('Serverstand hat sich geändert; keine Freigabe ausgeführt.');
+        showToast('Entscheidung atomar auf dem TEST-Server gespeichert.');
+      } catch (error) {
+        console.warn('Antragsentscheidung nicht gespeichert',error);
+        showToast('Entscheidung nicht ausgeführt: ' + (error.message || String(error)), 'error');
+      } finally {
+        mgmtDecisionPending = false;
+      }
     }
     function reviseMgmtApplication(id) {
       if (currentRole !== 'Daisy') return;
