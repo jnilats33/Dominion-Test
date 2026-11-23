@@ -6037,10 +6037,10 @@
       const labels = {pending:'Zur Prüfung',revision:'Nachbesserung erforderlich',rejected:'Abgelehnt',approved:'Freigegeben'};
       panel.innerHTML = '<h3 class="font-semibold text-amber-300">Anträge</h3>' + applications.map(a => {
         const actions = currentRole === 'Master' && a.status === 'pending'
-          ? `<div class="flex flex-wrap gap-2 mt-2"><button class="text-xs px-3 py-2 rounded-lg bg-sky-900" onclick="editMgmtApplication('${a.id}')">Bearbeiten</button><button class="text-xs px-3 py-2 rounded-lg bg-emerald-800" onclick="decideMgmtApplication('${a.id}','approved')">Freigeben</button><button class="text-xs px-3 py-2 rounded-lg bg-amber-800" onclick="decideMgmtApplication('${a.id}','revision')">Nachbesserung</button><button class="text-xs px-3 py-2 rounded-lg bg-rose-900" onclick="decideMgmtApplication('${a.id}','rejected')">Ablehnen</button></div>`
+          ? `<div class="flex flex-wrap gap-2 mt-2"><button class="text-xs px-3 py-2 rounded-lg bg-sky-900" onclick="openApplicationDialog('${a.id}','edit')">Bearbeiten</button><button class="text-xs px-3 py-2 rounded-lg bg-emerald-800" onclick="decideMgmtApplication('${a.id}','approved')">Freigeben</button><button class="text-xs px-3 py-2 rounded-lg bg-amber-800" onclick="decideMgmtApplication('${a.id}','revision')">Nachbesserung</button><button class="text-xs px-3 py-2 rounded-lg bg-rose-900" onclick="decideMgmtApplication('${a.id}','rejected')">Ablehnen</button></div>`
           : currentRole === 'Daisy' && a.status === 'revision'
           ? `<button class="text-xs px-3 py-2 rounded-lg bg-amber-800 mt-2" onclick="reviseMgmtApplication('${a.id}')">Überarbeiten und erneut einreichen</button>` : '';
-        return `<div class="rounded-lg border border-slate-700/60 bg-slate-900/50 p-3 text-sm ${a.status === 'pending' ? 'opacity-65 saturate-0' : ''}"><strong class="text-slate-300">${escapeHtml(a.item?.title || '')}</strong><span class="ml-2 text-xs text-slate-400">${labels[a.status] || a.status}</span><p class="text-xs text-slate-400 mt-1">${escapeHtml(a.item?.desc || '')}</p>${rewardImage(a.item || {}, a.category) ? `<img src="${escapeHtml(rewardImage(a.item || {}, a.category))}" alt="Bild zu ${escapeHtml(a.item?.title || 'Antrag')}" loading="lazy" class="rounded-xl max-h-48 w-auto mt-2 border border-slate-700 ${a.status === 'pending' ? 'grayscale' : ''}" />` : ''}${a.comment ? `<p class="text-xs mt-2">Kommentar: ${escapeHtml(a.comment)}</p>` : ''}${actions}</div>`;
+        return `<div class="rounded-lg border border-slate-700/60 bg-slate-900/50 p-3 text-sm ${a.status !== 'approved' ? 'opacity-65 saturate-0' : ''}"><strong class="text-slate-300">${escapeHtml(a.item?.title || '')}</strong><span class="ml-2 text-xs text-slate-400">${labels[a.status] || a.status}</span><p class="text-xs text-slate-400 mt-1">${escapeHtml(a.item?.desc || '')}</p>${rewardImage(a.item || {}, a.category) ? `<img src="${escapeHtml(rewardImage(a.item || {}, a.category))}" alt="Bild zu ${escapeHtml(a.item?.title || 'Antrag')}" loading="lazy" class="rounded-xl max-h-48 w-auto mt-2 border border-slate-700 ${a.status !== 'approved' ? 'grayscale' : ''}" />` : ''}${a.comment ? `<p class="text-xs mt-2">Kommentar: ${escapeHtml(a.comment)}</p>` : ''}${actions}</div>`;
       }).join('');
     }
     function editMgmtApplication(id) {
@@ -6143,19 +6143,107 @@
         mgmtDecisionPending = false;
       }
     }
-    function reviseMgmtApplication(id) {
-      if (currentRole !== 'Daisy') return;
+    let applicationImageDraft = null;
+    function openApplicationDialog(id, mode) {
       const a = (appState.mgmtApplications || []).find(x => x.id === id);
-      if (!a || a.status !== 'revision' || a.item?.createdBy !== currentRole || !hasPermission(a.category,'add')) return;
-      const title = prompt('Bezeichnung nachbessern:', a.item.title || '');
-      if (title === null || !title.trim()) return;
-      const desc = prompt('Beschreibung nachbessern:', a.item.desc || '');
-      if (desc === null) return;
-      a.item.title = title.trim(); a.item.desc = desc.trim();
-      a.status = 'pending'; a.comment = '';
-      a.history = [...(a.history || []), {action:'resubmitted',role:currentRole,at:Date.now()}];
-      persistState(); refreshAllUI();
+      if (!a || !a.item || a.item.masterLocked) return;
+      if (mode === 'revision' && (currentRole !== 'Daisy' || a.status !== 'revision' ||
+          a.item.createdBy !== 'Daisy' || !hasPermission(a.category,'add'))) return;
+      if (mode === 'edit' && (currentRole !== 'Master' || a.status !== 'pending')) return;
+      if (mode === 'decision' && (currentRole !== 'Master' || a.status !== 'pending')) return;
+      let dialog = document.getElementById('application-edit-dialog');
+      if (!dialog) {
+        dialog = document.createElement('div');
+        dialog.id = 'application-edit-dialog';
+        dialog.className = 'fixed inset-0 z-[100] bg-black/80 flex items-center justify-center p-4';
+        dialog.innerHTML = `<div class="w-full max-w-lg max-h-[90vh] overflow-y-auto rounded-2xl border border-slate-600 bg-slate-900 p-5 space-y-4 shadow-2xl" role="dialog" aria-modal="true" aria-labelledby="application-dialog-heading">
+          <h3 id="application-dialog-heading" class="font-semibold text-lg text-amber-300"></h3>
+          <label class="block text-sm">Bezeichnung<input id="application-dialog-title" class="mt-1 w-full rounded-lg bg-slate-800 border border-slate-600 p-2 text-white" maxlength="200"></label>
+          <label class="block text-sm">Beschreibung<textarea id="application-dialog-desc" rows="4" class="mt-1 w-full rounded-lg bg-slate-800 border border-slate-600 p-2 text-white"></textarea></label>
+          <label id="application-dialog-points-wrap" class="block text-sm">Punkte<input id="application-dialog-points" type="number" class="mt-1 w-full rounded-lg bg-slate-800 border border-slate-600 p-2 text-white"></label>
+          <div id="application-dialog-image-wrap" class="space-y-2"><img id="application-dialog-image" class="max-h-40 rounded-lg border border-slate-700" alt="Aktuelles Bild"><label class="block text-sm">Neues Bild auswählen<input id="application-dialog-file" type="file" accept="image/*" class="block w-full mt-1 text-xs"></label><button type="button" id="application-dialog-keep" class="text-xs px-3 py-2 bg-slate-700 rounded-lg">Bisheriges Bild behalten</button></div>
+          <label id="application-dialog-comment-wrap" class="block text-sm">Kommentar (optional)<textarea id="application-dialog-comment" rows="3" class="mt-1 w-full rounded-lg bg-slate-800 border border-slate-600 p-2 text-white"></textarea></label>
+          <div class="flex justify-end gap-2"><button type="button" onclick="closeApplicationDialog()" class="px-4 py-2 rounded-lg bg-slate-700">Abbrechen</button><button type="button" id="application-dialog-submit" class="px-4 py-2 rounded-lg bg-amber-700">Speichern</button></div>
+        </div>`;
+        document.body.appendChild(dialog);
+      }
+      dialog.dataset.id = id;
+      dialog.dataset.mode = mode;
+      applicationImageDraft = null;
+      dialog.querySelector('#application-dialog-heading').textContent = mode === 'revision' ? 'Vorschlag nachbessern' : mode === 'edit' ? 'Antrag bearbeiten' : 'Antrag entscheiden';
+      dialog.querySelector('#application-dialog-title').value = a.item.title || '';
+      dialog.querySelector('#application-dialog-desc').value = a.item.desc || '';
+      dialog.querySelector('#application-dialog-points').value = rewardAmount(a.item.rewardPoints);
+      dialog.querySelector('#application-dialog-comment').value = a.comment || '';
+      dialog.querySelector('#application-dialog-title').disabled = mode === 'decision';
+      dialog.querySelector('#application-dialog-desc').disabled = mode === 'decision';
+      dialog.querySelector('#application-dialog-points-wrap').classList.toggle('hidden',mode === 'decision' || !['strafen','belohnungen'].includes(a.category));
+      dialog.querySelector('#application-dialog-comment-wrap').classList.toggle('hidden',mode !== 'decision');
+      const img = rewardImage(a.item,a.category);
+      dialog.querySelector('#application-dialog-image-wrap').classList.toggle('hidden',mode === 'decision');
+      dialog.querySelector('#application-dialog-image').src = img || '';
+      dialog.querySelector('#application-dialog-image').classList.toggle('hidden',!img);
+      dialog.querySelector('#application-dialog-file').value = '';
+      dialog.querySelector('#application-dialog-file').onchange = async event => {
+        const file = event.target.files?.[0];
+        if (!file) return;
+        if (!file.type.startsWith('image/') || file.size > 12*1024*1024) {
+          showToast('Bilddatei ungültig oder größer als 12 MB.', 'error'); return;
+        }
+        try {
+          const url = URL.createObjectURL(file);
+          const image = new Image();
+          await new Promise((resolve,reject) => { image.onload=resolve; image.onerror=reject; image.src=url; });
+          const scale = Math.min(1,1280/Math.max(image.naturalWidth,image.naturalHeight));
+          const canvas = document.createElement('canvas');
+          canvas.width=Math.max(1,Math.round(image.naturalWidth*scale));
+          canvas.height=Math.max(1,Math.round(image.naturalHeight*scale));
+          const ctx=canvas.getContext('2d');
+          ctx.fillStyle='#ffffff';ctx.fillRect(0,0,canvas.width,canvas.height);ctx.drawImage(image,0,0,canvas.width,canvas.height);
+          applicationImageDraft=canvas.toDataURL('image/jpeg',0.8);
+          URL.revokeObjectURL(url);
+          dialog.querySelector('#application-dialog-image').src=applicationImageDraft;
+          dialog.querySelector('#application-dialog-image').classList.remove('hidden');
+        } catch(e) { showToast('Bild konnte nicht verarbeitet werden.','error'); }
+      };
+      dialog.querySelector('#application-dialog-keep').onclick = () => {
+        applicationImageDraft=null;
+        dialog.querySelector('#application-dialog-file').value='';
+        dialog.querySelector('#application-dialog-image').src=img || '';
+        dialog.querySelector('#application-dialog-image').classList.toggle('hidden',!img);
+      };
+      dialog.querySelector('#application-dialog-submit').textContent=mode === 'revision' ? 'Erneut einreichen' : mode === 'edit' ? 'Änderungen speichern' : 'Weiter';
+      dialog.querySelector('#application-dialog-submit').onclick=()=>submitApplicationDialog();
+      dialog.classList.remove('hidden');
+      dialog.querySelector('#application-dialog-title').focus();
     }
+    function closeApplicationDialog() {
+      document.getElementById('application-edit-dialog')?.classList.add('hidden');
+      applicationImageDraft=null;
+    }
+    function submitApplicationDialog() {
+      const dialog=document.getElementById('application-edit-dialog');
+      const id=dialog?.dataset.id,mode=dialog?.dataset.mode;
+      const a=(appState.mgmtApplications||[]).find(x=>x.id===id);
+      if (!a || !a.item || a.item.masterLocked) return closeApplicationDialog();
+      if (mode==='decision') return;
+      if (mode==='revision' && (currentRole!=='Daisy' || a.status!=='revision' || a.item.createdBy!=='Daisy' || !hasPermission(a.category,'add'))) return;
+      if (mode==='edit' && (currentRole!=='Master' || a.status!=='pending')) return;
+      const title=dialog.querySelector('#application-dialog-title').value.trim();
+      if (!title) return showToast('Bezeichnung erforderlich.','error');
+      a.item.title=title;
+      a.item.desc=dialog.querySelector('#application-dialog-desc').value.trim();
+      if (mode==='edit' && ['strafen','belohnungen'].includes(a.category))
+        a.item.rewardPoints=rewardAmount(dialog.querySelector('#application-dialog-points').value);
+      if (applicationImageDraft) {
+        a.item.imgUrl=applicationImageDraft;
+        delete a.item.galleryImageId;
+      }
+      if (mode==='revision') {a.status='pending';a.comment='';}
+      a.history=[...(a.history||[]),{action:mode==='revision'?'resubmitted':'edited',role:currentRole,at:Date.now()}];
+      closeApplicationDialog();persistState();refreshAllUI();
+    }
+    function reviseMgmtApplication(id) { openApplicationDialog(id,'revision'); }
 
     function renderVerwaltung() {
       const visibleCats = MGMT_CATEGORIES.filter(cat => cat.id !== 'aufgaben' && hasPermission(cat.id, 'visible'));
