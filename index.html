@@ -5379,7 +5379,7 @@
     // Existing task edits retain their previous path until separately reviewed.
     let taskCreationPending = false;
     async function saveTask() {
-      if (currentRole !== 'Master' && (!hasPermission('aufgaben', 'add') || document.getElementById('task-kind').value !== 'personal')) return;
+      if (!editingTaskId && currentRole !== 'Master' && (!hasPermission('aufgaben', 'add') || document.getElementById('task-kind').value !== 'personal')) return;
       if (taskCreationPending) return;
       const title = document.getElementById('task-title').value.trim();
       const desc = document.getElementById('task-desc').value.trim();
@@ -5546,9 +5546,9 @@
       const list = document.getElementById('task-list');
       if (!permitted) { list.innerHTML = ''; return; }
       const form = document.getElementById('tasks-form');
-      form.classList.toggle('hidden', currentRole !== 'Master' && !hasPermission('aufgaben','add'));
+      form.classList.toggle('hidden', !editingTaskId && currentRole !== 'Master' && !hasPermission('aufgaben','add'));
       const assignee = document.getElementById('task-assignee');
-      if (currentRole === 'Daisy') { assignee.disabled = false; document.getElementById('task-kind').value = 'personal'; } else assignee.disabled = false;
+      if (currentRole === 'Daisy') { assignee.disabled = false; if (!editingTaskId) document.getElementById('task-kind').value = 'personal'; } else assignee.disabled = false;
       updateTaskForm();
       const labels = { open: ['Offen','text-sky-300','border-sky-800'], review: ['Zur Prüfung','text-amber-300','border-amber-800'], overdue: ['Frist überschritten','text-rose-300','border-rose-800'], done: ['Erfüllt','text-emerald-300','border-emerald-800'], rejected: ['Nicht erfüllt','text-slate-400','border-slate-700'] };
       list.innerHTML = appState.mgmt.aufgaben.map(t => {
