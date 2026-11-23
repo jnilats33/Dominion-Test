@@ -454,6 +454,10 @@
             </button>
             <div class="flex items-center gap-2 shrink-0">
               <span id="feed-count-badge" class="text-[11px] px-2.5 py-1 rounded-full bg-white/5 border border-slate-800 text-slate-300">0 Einträge</span>
+              <div class="flex items-center gap-1" role="group" aria-label="Activity Stream nach handelnder Rolle filtern">
+                <button type="button" id="activity-role-master" onclick="toggleActivityStreamRole('Master')" aria-pressed="true" title="Ereignisse von Master anzeigen oder ausblenden" class="px-2 py-1.5 rounded-lg text-xs font-bold transition">♛</button>
+                <button type="button" id="activity-role-daisy" onclick="toggleActivityStreamRole('Daisy')" aria-pressed="true" title="Ereignisse von Daisy anzeigen oder ausblenden" class="px-2 py-1.5 rounded-lg text-xs font-bold transition">🌸</button>
+              </div>
               <button type="button" onclick="openActivityStreamSettings()" title="Activity-Stream-Ansicht einstellen" aria-label="Activity-Stream-Ansicht einstellen" class="px-2 py-1.5 rounded-lg text-slate-400 hover:text-[#e5b55c] hover:bg-white/5 transition">⚙️</button>
               <button type="button" id="dashboard-feed-pin" onclick="toggleDashboardSectionPin('feed')" aria-pressed="false" aria-label="Aktivitäts-Stream geöffnet halten" title="Aktivitäts-Stream geöffnet halten" class="px-2 py-1.5 rounded-lg text-slate-400 hover:text-[#e5b55c] hover:bg-white/5 transition">📌</button>
             </div>
@@ -3552,6 +3556,38 @@
       return roleKey;
     }
 
+    // Quick role toggles apply only after all permission and event-type filters.
+    const ACTIVITY_ROLE_FILTER_KEY = 'dominion-test-activity-roles-v1:';
+    function getActivityStreamRoleFilter() {
+      try {
+        const saved = JSON.parse(localStorage.getItem(ACTIVITY_ROLE_FILTER_KEY + currentRole) || '{}');
+        return {Master:saved.Master !== false,Daisy:saved.Daisy !== false};
+      } catch (_) { return {Master:true,Daisy:true}; }
+    }
+    function toggleActivityStreamRole(role) {
+      if (!['Master','Daisy'].includes(role)) return;
+      const selected = getActivityStreamRoleFilter();
+      selected[role] = !selected[role];
+      try { localStorage.setItem(ACTIVITY_ROLE_FILTER_KEY + currentRole,JSON.stringify(selected)); }
+      catch (_) { showToast('Rollenfilter konnte nicht gespeichert werden.','error'); return; }
+      renderDashboard();
+    }
+    function updateActivityStreamRoleButtons(selected) {
+      for (const role of ['Master','Daisy']) {
+        const button = document.getElementById('activity-role-' + role.toLowerCase());
+        if (!button) continue;
+        const enabled = selected[role];
+        button.setAttribute('aria-pressed',String(enabled));
+        button.classList.toggle('bg-[#c9973e]/25',enabled);
+        button.classList.toggle('text-[#e5b55c]',enabled);
+        button.classList.toggle('border',enabled);
+        button.classList.toggle('border-[#c9973e]/50',enabled);
+        button.classList.toggle('bg-white/5',!enabled);
+        button.classList.toggle('text-slate-500',!enabled);
+        button.classList.toggle('opacity-50',!enabled);
+      }
+    }
+
     // Stream permissions: synchronized Master allowance, separate local role preferences.
     const ACTIVITY_FILTER_KEY = 'dominion-test-activity-filter-v1';
     const ACTIVITY_EVENT_TYPES = [
@@ -4514,9 +4550,12 @@
         !(e.targetTab === 'verwaltung' && reviewedItemIds.has(String(e.targetItemId || '')) &&
           typeof e.action === 'string' && e.action.includes('hinzugefügt:'))
       )].sort((a,b) => (b.timestamp || 0) - (a.timestamp || 0));
+      const selectedActors = getActivityStreamRoleFilter();
+      updateActivityStreamRoleButtons(selectedActors);
       const visibleFeed = rawFeed.filter(item =>
         (currentRole !== 'Daisy' || isActivityVisibleForDaisy(item)) &&
-        isActivityStreamEventEnabled(item));
+        isActivityStreamEventEnabled(item) &&
+        (item.actorRole !== 'Master' && item.actorRole !== 'Daisy' || selectedActors[item.actorRole]));
       const feedItems = visibleFeed.slice(0, limit);
       document.getElementById('feed-count-badge').textContent = `${feedItems.length} Einträge`;
 
