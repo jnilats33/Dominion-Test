@@ -494,12 +494,18 @@
             <button onclick="clearChatAttachment()" class="text-xs text-rose-400 hover:text-rose-300 px-2 py-1">Entfernen ✕</button>
           </div>
 
+          <!-- Emoji-Auswahl: rein lokal, keine Änderungen am Chat-Datenmodell -->
+          <div id="chat-emoji-picker" class="hidden px-3 py-3 bg-black/40 border-t border-slate-800" aria-label="Emoji-Auswahl">
+            <div class="flex items-center justify-between mb-2"><span class="text-xs text-slate-400">Emoji auswählen</span><button type="button" onclick="toggleChatEmojiPicker(false)" class="text-xs text-slate-400 hover:text-white" aria-label="Emoji-Auswahl schließen">✕</button></div>
+            <div id="chat-emoji-options" class="grid grid-cols-8 sm:grid-cols-12 gap-1 max-h-36 overflow-y-auto"></div>
+          </div>
           <!-- Chat Input Bar -->
           <div class="p-3 bg-black/40 border-t border-slate-800 flex items-center gap-2">
             <label class="p-2.5 rounded-xl bg-white/5 hover:bg-white/10 text-slate-300 cursor-pointer transition shrink-0" title="Bild anhängen">
               📷
               <input id="chat-image-input" type="file" accept="image/*" class="hidden" onchange="handleChatImageSelect(event)" />
             </label>
+            <button type="button" id="chat-emoji-btn" onclick="toggleChatEmojiPicker()" aria-label="Emojis auswählen" aria-expanded="false" aria-controls="chat-emoji-picker" class="p-2.5 rounded-xl bg-white/5 hover:bg-white/10 text-slate-300 transition shrink-0" title="Emojis">😊</button>
             <button id="chat-mic-btn" onclick="toggleVoiceRecording()" class="p-2.5 rounded-xl bg-white/5 hover:bg-white/10 text-slate-300 transition shrink-0" title="Sprachnachricht">
               🎙️
             </button>
@@ -4546,6 +4552,38 @@
       }
     }
 
+    const CHAT_EMOJIS = ['😀','😃','😄','😁','😆','😅','😂','🤣','😊','😍','🥰','😘','😉','😎','🥳','🤩','😇','🙂','🙃','😋','😜','🤔','😏','😢','😭','😡','😱','🥺','😴','🤗','🤭','🙈','❤️','💕','💋','💖','💔','👍','👎','👏','🙌','🙏','💪','🤝','👋','👌','🔥','🎉','🎁','🌹','🌞','☕','🍀','💯','✨','💐','🐱','🐶','💌','💃','🕺','😈','💜','🫶'];
+    function toggleChatEmojiPicker(force) {
+      const panel = document.getElementById('chat-emoji-picker');
+      const button = document.getElementById('chat-emoji-btn');
+      const options = document.getElementById('chat-emoji-options');
+      if (!panel || !button || !options) return;
+      const show = typeof force === 'boolean' ? force : panel.classList.contains('hidden');
+      if (show && !options.childElementCount) {
+        CHAT_EMOJIS.forEach(emoji => {
+          const choice = document.createElement('button');
+          choice.type = 'button';
+          choice.textContent = emoji;
+          choice.title = emoji;
+          choice.setAttribute('aria-label', 'Emoji ' + emoji + ' einfügen');
+          choice.className = 'text-xl rounded-lg hover:bg-white/10 p-1.5';
+          choice.addEventListener('click', () => insertChatEmoji(emoji));
+          options.appendChild(choice);
+        });
+      }
+      panel.classList.toggle('hidden', !show);
+      button.setAttribute('aria-expanded', String(show));
+    }
+    function insertChatEmoji(emoji) {
+      const input = document.getElementById('chat-input');
+      if (!input || !CHAT_EMOJIS.includes(emoji)) return;
+      const start = input.selectionStart ?? input.value.length;
+      const end = input.selectionEnd ?? start;
+      input.setRangeText(emoji, start, end, 'end');
+      input.dispatchEvent(new Event('input', {bubbles:true}));
+      input.focus();
+    }
+
     function sendChatMessage() {
       const input = document.getElementById('chat-input');
       const text = input.value.trim();
@@ -4560,6 +4598,7 @@
       });
 
       input.value = '';
+      toggleChatEmojiPicker(false);
       clearChatAttachment();
       persistChat(appState.chat[appState.chat.length - 1]);
       renderChat();
