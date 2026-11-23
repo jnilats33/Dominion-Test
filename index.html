@@ -6040,7 +6040,7 @@
           ? `<div class="flex flex-wrap gap-2 mt-2"><button class="text-xs px-3 py-2 rounded-lg bg-sky-900" onclick="editMgmtApplication('${a.id}')">Bearbeiten</button><button class="text-xs px-3 py-2 rounded-lg bg-emerald-800" onclick="decideMgmtApplication('${a.id}','approved')">Freigeben</button><button class="text-xs px-3 py-2 rounded-lg bg-amber-800" onclick="decideMgmtApplication('${a.id}','revision')">Nachbesserung</button><button class="text-xs px-3 py-2 rounded-lg bg-rose-900" onclick="decideMgmtApplication('${a.id}','rejected')">Ablehnen</button></div>`
           : currentRole === 'Daisy' && a.status === 'revision'
           ? `<button class="text-xs px-3 py-2 rounded-lg bg-amber-800 mt-2" onclick="reviseMgmtApplication('${a.id}')">Überarbeiten und erneut einreichen</button>` : '';
-        return `<div class="rounded-lg bg-white/5 p-3 text-sm"><strong>${escapeHtml(a.item?.title || '')}</strong><span class="ml-2 text-xs text-amber-300">${labels[a.status] || a.status}</span><p class="text-xs text-slate-400 mt-1">${escapeHtml(a.item?.desc || '')}</p>${a.comment ? `<p class="text-xs mt-2">Kommentar: ${escapeHtml(a.comment)}</p>` : ''}${actions}</div>`;
+        return `<div class="rounded-lg border border-slate-700/60 bg-slate-900/50 p-3 text-sm ${a.status === 'pending' ? 'opacity-65 saturate-0' : ''}"><strong class="text-slate-300">${escapeHtml(a.item?.title || '')}</strong><span class="ml-2 text-xs text-slate-400">${labels[a.status] || a.status}</span><p class="text-xs text-slate-400 mt-1">${escapeHtml(a.item?.desc || '')}</p>${a.comment ? `<p class="text-xs mt-2">Kommentar: ${escapeHtml(a.comment)}</p>` : ''}${actions}</div>`;
       }).join('');
     }
     function editMgmtApplication(id) {
@@ -6137,7 +6137,7 @@
       const showBonus = currentRole === 'Daisy' && !isEditing && canAdd && ['belohnungen','strafen','regeln','toys','kleidung'].includes(activeMgmtCategory) && bonus > 0;
       hint.classList.toggle('hidden', !showBonus);
       hint.textContent = showBonus ? '+' + bonus + ' Punkte' : '';
-      document.getElementById('mgmt-submit-button').textContent = isEditing ? 'Änderungen speichern' : 'Anlegen';
+      document.getElementById('mgmt-submit-button').textContent = isEditing ? 'Änderungen speichern' : (currentRole === 'Daisy' && appState.permissions?.[activeMgmtCategory]?.reviewRequired ? 'Vorschlag einreichen' : 'Anlegen');
       document.getElementById('mgmt-submit-button').onclick = isEditing ? saveMgmtEdit : addMgmtItem;
       document.getElementById('mgmt-cancel-edit').classList.toggle('hidden', !isEditing);
 
