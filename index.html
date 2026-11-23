@@ -6032,7 +6032,11 @@
         panel.className = 'rounded-xl border border-amber-800/50 p-4 space-y-3';
         document.getElementById('mgmt-items-list').before(panel);
       }
-      const applications = (appState.mgmtApplications || []).filter(a => a.category === activeMgmtCategory && (currentRole === 'Master' || a.item?.createdBy === currentRole));
+      // Completed requests remain in Firebase for audit/history, but not in the active queue.
+      const applications = (appState.mgmtApplications || []).filter(a =>
+        a.category === activeMgmtCategory &&
+        ['pending','revision'].includes(a.status) &&
+        (currentRole === 'Master' || a.item?.createdBy === currentRole));
       panel.classList.toggle('hidden', !applications.length);
       const labels = {pending:'Zur Prüfung',revision:'Nachbesserung erforderlich',rejected:'Abgelehnt',approved:'Freigegeben'};
       panel.innerHTML = '<h3 class="font-semibold text-amber-300">Anträge</h3>' + applications.map(a => {
