@@ -1173,6 +1173,7 @@
           feedLimit: 20
         },
         permissions: createDefaultPermissions(),
+        mgmtApplications: [],
         chat: [
           {
             id: 'msg-welcome-1',
@@ -6022,6 +6023,60 @@
       closeDominionIdeas();
     }
 
+
+    function renderMgmtApplications() {
+      let panel = document.getElementById('mgmt-applications-panel');
+      if (!panel) {
+        panel = document.createElement('div');
+        panel.id = 'mgmt-applications-panel';
+        panel.className = 'rounded-xl border border-amber-800/50 p-4 space-y-3';
+        document.getElementById('mgmt-items-list').before(panel);
+      }
+      const applications = (appState.mgmtApplications || []).filter(a => a.category === activeMgmtCategory && (currentRole === 'Master' || a.item?.createdBy === currentRole));
+      panel.classList.toggle('hidden', !applications.length);
+      const labels = {pending:'Zur Prüfung',revision:'Nachbesserung erforderlich',rejected:'Abgelehnt',approved:'Freigegeben'};
+      panel.innerHTML = '<h3 class="font-semibold text-amber-300">Anträge</h3>' + applications.map(a => {
+        const actions = currentRole === 'Master' && a.status === 'pending'
+          ? `<div class="flex flex-wrap gap-2 mt-2"><button class="text-xs px-3 py-2 rounded-lg bg-emerald-800" onclick="decideMgmtApplication('${a.id}','approved')">Freigeben</button><button class="text-xs px-3 py-2 rounded-lg bg-amber-800" onclick="decideMgmtApplication('${a.id}','revision')">Nachbesserung</button><button class="text-xs px-3 py-2 rounded-lg bg-rose-900" onclick="decideMgmtApplication('${a.id}','rejected')">Ablehnen</button></div>`
+          : currentRole === 'Daisy' && a.status === 'revision'
+          ? `<button class="text-xs px-3 py-2 rounded-lg bg-amber-800 mt-2" onclick="reviseMgmtApplication('${a.id}')">Überarbeiten und erneut einreichen</button>` : '';
+        return `<div class="rounded-lg bg-white/5 p-3 text-sm"><strong>${escapeHtml(a.item?.title || '')}</strong><span class="ml-2 text-xs text-amber-300">${labels[a.status] || a.status}</span><p class="text-xs text-slate-400 mt-1">${escapeHtml(a.item?.desc || '')}</p>${a.comment ? `<p class="text-xs mt-2">Kommentar: ${escapeHtml(a.comment)}</p>` : ''}${actions}</div>`;
+      }).join('');
+    }
+    function decideMgmtApplication(id, decision) {
+      if (currentRole !== 'Master' || !['approved','revision','rejected'].includes(decision)) return;
+      const a = (appState.mgmtApplications || []).find(x => x.id === id);
+      if (!a || a.status !== 'pending') return;
+      let comment = '';
+      if (decision !== 'approved') {
+        const entered = prompt(decision === 'revision' ? 'Kommentar zur Nachbesserung (optional):' : 'Ablehnungsgrund (optional):', a.comment || '');
+        if (entered === null) return;
+        comment = entered.trim().slice(0, 2000);
+      }
+      if (decision === 'approved') {
+        if (!Array.isArray(appState.mgmt[a.category])) return;
+        if (appState.mgmt[a.category].some(item => item.id === a.item.id)) return;
+        appState.mgmt[a.category].unshift({...a.item});
+        if (['kleidung','toys','belohnungen','strafen','regeln'].includes(a.category)) bookReward('item:' + a.item.id, rewardAmount(appState.rewardRules[a.category]), 'Freigegebener Eintrag: ' + a.item.title);
+      }
+      a.status = decision; a.comment = comment; a.decidedAt = Date.now();
+      a.history = [...(a.history || []), {action:decision,role:currentRole,at:Date.now(),comment}];
+      persistState(); refreshAllUI();
+    }
+    function reviseMgmtApplication(id) {
+      if (currentRole !== 'Daisy') return;
+      const a = (appState.mgmtApplications || []).find(x => x.id === id);
+      if (!a || a.status !== 'revision' || a.item?.createdBy !== currentRole || !hasPermission(a.category,'add')) return;
+      const title = prompt('Bezeichnung nachbessern:', a.item.title || '');
+      if (title === null || !title.trim()) return;
+      const desc = prompt('Beschreibung nachbessern:', a.item.desc || '');
+      if (desc === null) return;
+      a.item.title = title.trim(); a.item.desc = desc.trim();
+      a.status = 'pending'; a.comment = '';
+      a.history = [...(a.history || []), {action:'resubmitted',role:currentRole,at:Date.now()}];
+      persistState(); refreshAllUI();
+    }
+
     function renderVerwaltung() {
       const visibleCats = MGMT_CATEGORIES.filter(cat => cat.id !== 'aufgaben' && hasPermission(cat.id, 'visible'));
       const subTabsEl = document.getElementById('verwaltung-subtabs');
@@ -6068,6 +6123,7 @@
       document.getElementById('mgmt-cancel-edit').classList.toggle('hidden', !isEditing);
 
       renderRewardGallery();
+      renderMgmtApplications();
       numberMgmtItems(appState);
       const items = appState.mgmt[activeMgmtCategory] || [];
       const listEl = document.getElementById('mgmt-items-list');
@@ -6188,8 +6244,12 @@
       if (!Array.isArray(appState.mgmt[activeMgmtCategory])) {
         appState.mgmt[activeMgmtCategory] = [];
       }
-      appState.mgmt[activeMgmtCategory].unshift(newItem);
-      if (currentRole === 'Daisy' && ['kleidung','toys','belohnungen','strafen','regeln'].includes(activeMgmtCategory)) bookReward('item:' + newItem.id, rewardAmount(appState.rewardRules[activeMgmtCategory]), 'Neuer Eintrag: ' + title);
+      const needsReview = currentRole === 'Daisy' && !!appState.permissions?.[activeMgmtCategory]?.reviewRequired;
+      if (needsReview) {
+        if (!Array.isArray(appState.mgmtApplications)) appState.mgmtApplications = [];
+        appState.mgmtApplications.unshift({id:'application-' + newItem.id,category:activeMgmtCategory,item:newItem,status:'pending',createdAt:Date.now(),history:[{action:'submitted',role:currentRole,at:Date.now()}]});
+      } else appState.mgmt[activeMgmtCategory].unshift(newItem);
+      if (!needsReview && currentRole === 'Daisy' && ['kleidung','toys','belohnungen','strafen','regeln'].includes(activeMgmtCategory)) bookReward('item:' + newItem.id, rewardAmount(appState.rewardRules[activeMgmtCategory]), 'Neuer Eintrag: ' + title);
 
       logActivity(`hat ${catObj ? catObj.singular : 'Eintrag'} hinzugefügt: „${title}“`, 'verwaltung', activeMgmtCategory, newItem.id);
 
@@ -6199,7 +6259,7 @@
       document.getElementById('mgmt-points').value = '0';
       persistState();
       refreshAllUI();
-      showToast('Eintrag angelegt.');
+      showToast(needsReview ? 'Antrag zur Prüfung eingereicht.' : 'Eintrag angelegt.');
     }
 
     function toggleMgmtDone(catId, itemId) {
@@ -6550,7 +6610,7 @@
                        class="w-4 h-4 accent-[#c9973e] rounded cursor-pointer" />
               </td>
             `).join('')}
-            <td class="p-2 text-center"><input type="checkbox" disabled title="Freigabe-Workflow noch nicht aktiviert – sicherheitshalber gesperrt" class="w-4 h-4 opacity-40" /></td>
+            <td class="p-2 text-center"><input type="checkbox" ${p.reviewRequired ? 'checked' : ''} ${MGMT_CATEGORIES.some(c => c.id === cat.id && cat.id !== 'aufgaben') ? `onchange="updateCategoryPermission('${cat.id}', 'reviewRequired', this.checked)"` : 'disabled title="Für diese Kategorie noch nicht verfügbar"'} class="w-4 h-4 accent-[#c9973e]" /></td>
             ${['kleidung', 'toys', 'belohnungen', 'strafen', 'regeln'].includes(cat.id) ? `<td class="p-2 text-center"><input aria-label="Punkte für ${cat.label}" title="Punkte pro neuem Eintrag durch Daisy" type="number" min="0" step="1" value="${rewardAmount(appState.rewardRules?.[cat.id])}" onchange="saveRewardRule('${cat.id}',this.value)" class="w-16 max-w-full px-2 py-1.5 text-xs rounded-lg" /></td>` : '<td class="p-2 text-center text-slate-600">–</td>'}
           </tr>
         `;
@@ -6570,7 +6630,7 @@
       if (!appState.permissions[catId]) {
         appState.permissions[catId] = { visible: true, add: false, edit: false, delete: false };
       }
-      if (!['visible','add','editOwn','editOthers','deleteOwn','deleteOthers'].includes(action)) return;
+      if (!['visible','add','editOwn','editOthers','deleteOwn','deleteOthers','reviewRequired'].includes(action)) return;
       const p = appState.permissions[catId];
       for (const key of ['editOwn','editOthers','deleteOwn','deleteOthers']) {
         if (typeof p[key] !== 'boolean') p[key] = !!p[key.startsWith('edit') ? 'edit' : 'delete'];
