@@ -6044,7 +6044,7 @@
       // Keep each section's expanded state when the UI refreshes.
       const requestsWasOpen = panel.querySelector('#mgmt-requests-section')?.open ?? true;
       const historyWasOpen = panel.querySelector('#mgmt-history-section')?.open ?? false;
-      panel.classList.toggle('hidden', activeMgmtCategory !== 'strafen');
+      panel.classList.toggle('hidden', activeMgmtCategory !== 'strafen' && !applications.length && !history.length);
       const labels = {pending:'Zur Prüfung',revision:'Nachbesserung erforderlich',rejected:'Abgelehnt',approved:'Freigegeben'};
       panel.innerHTML = '<details id="mgmt-requests-section" class="rounded-xl border border-amber-800/50 p-3" ' + (requestsWasOpen ? 'open' : '') + '><summary class="cursor-pointer font-semibold text-amber-300">Anträge zur Bearbeitung (' + applications.length + ')</summary><div class="space-y-3 mt-3">' + (applications.length ? '' : '<p class="text-xs text-slate-400">Keine offenen Anträge.</p>') + applications.map(a => {
         const actions = currentRole === 'Master' && a.status === 'pending'
