@@ -6067,12 +6067,21 @@
       if (currentRole !== 'Master' || !['approved','revision','rejected'].includes(decision) || mgmtDecisionPending) return;
       const application = (appState.mgmtApplications || []).find(x => x.id === id);
       if (!application || application.status !== 'pending') return;
-      let comment = '';
-      if (decision !== 'approved') {
-        const entered = prompt(decision === 'revision' ? 'Kommentar zur Nachbesserung (optional):' : 'Ablehnungsgrund (optional):', application.comment || '');
-        if (entered === null) return;
-        comment = entered.trim().slice(0, 2000);
+      // Route comments through Dominion's own dialog, not browser prompts.
+      if (decision !== 'approved' && !(window.applicationDecisionConfirmed?.id === id && window.applicationDecisionConfirmed?.decision === decision)) {
+        openApplicationDialog(id,'decision');
+        const dialog = document.getElementById('application-edit-dialog');
+        dialog.dataset.decision = decision;
+        dialog.querySelector('#application-dialog-heading').textContent =
+          decision === 'revision' ? 'Zur Nachbesserung zurückgeben' : 'Antrag ablehnen';
+        dialog.querySelector('#application-dialog-submit').textContent =
+          decision === 'revision' ? 'Nachbesserung anfordern' : 'Endgültig ablehnen';
+        return;
       }
+      const comment = window.applicationDecisionConfirmed?.id === id &&
+        window.applicationDecisionConfirmed?.decision === decision
+        ? window.applicationDecisionConfirmed.comment : '';
+      window.applicationDecisionConfirmed = null;
       // No local fallback: application, catalog and reward ledger must commit together.
       if (location.hostname !== 'jnilats33.github.io' ||
           !location.pathname.startsWith('/Dominion-Test/') ||
@@ -6226,7 +6235,15 @@
       const id=dialog?.dataset.id,mode=dialog?.dataset.mode;
       const a=(appState.mgmtApplications||[]).find(x=>x.id===id);
       if (!a || !a.item || a.item.masterLocked) return closeApplicationDialog();
-      if (mode==='decision') return;
+      if (mode==='decision') {
+        if (currentRole!=='Master' || a.status!=='pending') return;
+        const decision=dialog.dataset.decision;
+        const comment=dialog.querySelector('#application-dialog-comment').value.trim().slice(0,2000);
+        closeApplicationDialog();
+        window.applicationDecisionConfirmed={id,decision,comment};
+        decideMgmtApplication(id,decision);
+        return;
+      }
       if (mode==='revision' && (currentRole!=='Daisy' || a.status!=='revision' || a.item.createdBy!=='Daisy' || !hasPermission(a.category,'add'))) return;
       if (mode==='edit' && (currentRole!=='Master' || a.status!=='pending')) return;
       const title=dialog.querySelector('#application-dialog-title').value.trim();
