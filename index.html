@@ -1144,7 +1144,11 @@
           visible: true,
           add: cat.id === 'einkauf' || cat.id === 'kalender',
           edit: cat.id === 'einkauf' || cat.id === 'aufgaben',
-          delete: false
+          delete: false,
+          editOwn: cat.id === 'einkauf' || cat.id === 'aufgaben',
+          editOthers: cat.id === 'einkauf' || cat.id === 'aufgaben',
+          deleteOwn: false,
+          deleteOthers: false
         };
       });
       return perms;
@@ -4843,8 +4847,8 @@
             </div>
             <div class="flex flex-wrap gap-1.5 w-full sm:w-auto sm:justify-end min-w-0">
               ${currentRole === 'Master' && ownerRole === 'Daisy' && !ev.confirmed && ((ev.pointsPlus != null ? Number(ev.pointsPlus) : Math.max(0,Number(ev.points || 0))) > 0 || (ev.pointsMinus != null ? Number(ev.pointsMinus) : Math.max(0,-Number(ev.points || 0))) > 0) ? `<button onclick="confirmCalendarEvent('${ev.id}','fulfilled')" class="p-2 rounded-lg bg-emerald-500/15 text-emerald-300 text-xs" title="Termin erfüllt">✓ Erfüllt</button><button onclick="confirmCalendarEvent('${ev.id}','unfulfilled')" class="p-2 rounded-lg bg-rose-500/15 text-rose-300 text-xs" title="Termin nicht erfüllt">✕ Nicht erfüllt</button>` : ''}
-              ${hasPermission('kalender','edit') || currentRole === 'Master' ? `<button onclick="editCalendarEvent('${ev.id}')" class="p-2 rounded-lg bg-slate-700/50 text-slate-200 text-xs" title="Termin bearbeiten">✎</button>` : ''}
-              ${canDelete ? `<button onclick="deleteCalendarEvent('${ev.id}')" class="p-2 rounded-lg bg-rose-500/10 hover:bg-rose-500/25 text-rose-400 text-xs transition">🗑️</button>` : ''}
+              ${canChangeEntry('kalender','edit',ev) ? `<button onclick="editCalendarEvent('${ev.id}')" class="p-2 rounded-lg bg-slate-700/50 text-slate-200 text-xs" title="Termin bearbeiten">✎</button>` : ''}
+              ${canChangeEntry('kalender','delete',ev) ? `<button onclick="deleteCalendarEvent('${ev.id}')" class="p-2 rounded-lg bg-rose-500/10 hover:bg-rose-500/25 text-rose-400 text-xs transition">🗑️</button>` : ''}
             </div>
           </div>
         `;
@@ -5063,7 +5067,7 @@
     }
 
     function clearCompletedShopping() {
-      if (!hasPermission('einkauf', 'delete') && currentRole !== 'Master') {
+      if (currentRole !== 'Master' && !(appState.permissions?.einkauf?.deleteOwn || appState.permissions?.einkauf?.deleteOthers || appState.permissions?.einkauf?.delete)) {
         showToast('Keine Löschberechtigung.', 'error');
         return;
       }
@@ -6527,7 +6531,11 @@
         appState.permissions[catId] = { visible: true, add: false, edit: false, delete: false };
       }
       if (!['visible','add','editOwn','editOthers','deleteOwn','deleteOthers'].includes(action)) return;
-      appState.permissions[catId][action] = value;
+      const p = appState.permissions[catId];
+      for (const key of ['editOwn','editOthers','deleteOwn','deleteOthers']) {
+        if (typeof p[key] !== 'boolean') p[key] = !!p[key.startsWith('edit') ? 'edit' : 'delete'];
+      }
+      p[action] = value;
       persistState();
       refreshAllUI();
       showToast('Berechtigung aktualisiert.');
