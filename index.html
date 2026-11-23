@@ -497,6 +497,10 @@
           <!-- Emoji-Auswahl: rein lokal, keine Änderungen am Chat-Datenmodell -->
           <div id="chat-emoji-picker" class="hidden px-3 py-3 bg-black/40 border-t border-slate-800" aria-label="Emoji-Auswahl">
             <div class="flex items-center justify-between mb-2"><span class="text-xs text-slate-400">Emoji auswählen</span><button type="button" onclick="toggleChatEmojiPicker(false)" class="text-xs text-slate-400 hover:text-white" aria-label="Emoji-Auswahl schließen">✕</button></div>
+            <div class="flex gap-2 mb-2" role="group" aria-label="Emoji-Kategorie">
+              <button type="button" id="chat-emoji-tab-alltag" onclick="showChatEmojiCategory('alltag')" class="px-3 py-1.5 rounded-lg text-xs bg-[#c9973e]/20 text-[#e5b55c] border border-[#c9973e]/40" aria-pressed="true">😊 Smileys &amp; Alltag</button>
+              <button type="button" id="chat-emoji-tab-dominion" onclick="showChatEmojiCategory('dominion')" class="px-3 py-1.5 rounded-lg text-xs bg-white/5 text-slate-300 border border-slate-700" aria-pressed="false">👑 Dominion</button>
+            </div>
             <div id="chat-emoji-options" class="grid grid-cols-8 sm:grid-cols-12 gap-1 max-h-36 overflow-y-auto"></div>
           </div>
           <!-- Chat Input Bar -->
@@ -4552,25 +4556,44 @@
       }
     }
 
-    const CHAT_EMOJIS = ['😀','😃','😄','😁','😆','😅','😂','🤣','😊','😍','🥰','😘','😉','😎','🥳','🤩','😇','🙂','🙃','😋','😜','🤔','😏','😢','😭','😡','😱','🥺','😴','🤗','🤭','🙈','❤️','💕','💋','💖','💔','👍','👎','👏','🙌','🙏','💪','🤝','👋','👌','🔥','🎉','🎁','🌹','🌞','☕','🍀','💯','✨','💐','🐱','🐶','💌','💃','🕺','😈','💜','🫶'];
+    const CHAT_EMOJI_CATEGORIES = {
+      alltag: ['😀','😃','😄','😁','😆','😅','😂','🤣','😊','😍','🥰','😘','😉','😎','🥳','🤩','😇','🙂','🙃','😋','😜','🤔','😏','😢','😭','😡','😱','🥺','😴','🤗','🤭','🙈','❤️','💕','💋','💖','💔','👍','👎','👏','🙌','🙏','💪','🤝','👋','👌','🔥','🎉','🎁','🌹','🌞','☕','🍀','💯','✨','💐','🐱','🐶','💌','💃','🕺','😈','💜','🫶'],
+      dominion: ['👑','😈','😇','🖤','❤️‍🔥','⛓️','🔒','🔑','🫦','💋','🧎','🙇','🎀','🪢','🕯️','🥀','🫶','🌹','💌','🎁','🖤','💜','🔥','✨']
+    };
+    const CHAT_EMOJIS = [...new Set(Object.values(CHAT_EMOJI_CATEGORIES).flat())];
+    let chatEmojiCategory = 'alltag';
+    function showChatEmojiCategory(category) {
+      if (!Object.prototype.hasOwnProperty.call(CHAT_EMOJI_CATEGORIES, category)) return;
+      chatEmojiCategory = category;
+      const options = document.getElementById('chat-emoji-options');
+      if (!options) return;
+      options.replaceChildren();
+      CHAT_EMOJI_CATEGORIES[category].forEach(emoji => {
+        const choice = document.createElement('button');
+        choice.type = 'button';
+        choice.textContent = emoji;
+        choice.title = emoji;
+        choice.setAttribute('aria-label', 'Emoji ' + emoji + ' einfügen');
+        choice.className = 'text-xl rounded-lg hover:bg-white/10 p-1.5';
+        choice.addEventListener('click', () => insertChatEmoji(emoji));
+        options.appendChild(choice);
+      });
+      for (const key of Object.keys(CHAT_EMOJI_CATEGORIES)) {
+        const tab = document.getElementById('chat-emoji-tab-' + key);
+        if (!tab) continue;
+        const selected = key === category;
+        tab.setAttribute('aria-pressed', String(selected));
+        tab.className = selected
+          ? 'px-3 py-1.5 rounded-lg text-xs bg-[#c9973e]/20 text-[#e5b55c] border border-[#c9973e]/40'
+          : 'px-3 py-1.5 rounded-lg text-xs bg-white/5 text-slate-300 border border-slate-700';
+      }
+    }
     function toggleChatEmojiPicker(force) {
       const panel = document.getElementById('chat-emoji-picker');
       const button = document.getElementById('chat-emoji-btn');
-      const options = document.getElementById('chat-emoji-options');
-      if (!panel || !button || !options) return;
+      if (!panel || !button) return;
       const show = typeof force === 'boolean' ? force : panel.classList.contains('hidden');
-      if (show && !options.childElementCount) {
-        CHAT_EMOJIS.forEach(emoji => {
-          const choice = document.createElement('button');
-          choice.type = 'button';
-          choice.textContent = emoji;
-          choice.title = emoji;
-          choice.setAttribute('aria-label', 'Emoji ' + emoji + ' einfügen');
-          choice.className = 'text-xl rounded-lg hover:bg-white/10 p-1.5';
-          choice.addEventListener('click', () => insertChatEmoji(emoji));
-          options.appendChild(choice);
-        });
-      }
+      if (show) showChatEmojiCategory(chatEmojiCategory);
       panel.classList.toggle('hidden', !show);
       button.setAttribute('aria-expanded', String(show));
     }
