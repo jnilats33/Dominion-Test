@@ -5053,7 +5053,7 @@
 
     function toggleShoppingItem(id) {
       const item = appState.einkauf.find(i => i.id === id);
-      if (!item || !canChangeEntry('einkauf', 'edit', item)) return;
+      if (!item || !canChangeEntry(catId, 'edit', item)) return;
       item.done = !item.done;
       item.lastEditedBy = currentRole;
       logActivity(`hat Einkaufsartikel ${item.done ? 'abgehakt' : 'wieder geöffnet'}: „${item.name}“`, 'einkauf', null, item.id);
@@ -6037,11 +6037,30 @@
       const labels = {pending:'Zur Prüfung',revision:'Nachbesserung erforderlich',rejected:'Abgelehnt',approved:'Freigegeben'};
       panel.innerHTML = '<h3 class="font-semibold text-amber-300">Anträge</h3>' + applications.map(a => {
         const actions = currentRole === 'Master' && a.status === 'pending'
-          ? `<div class="flex flex-wrap gap-2 mt-2"><button class="text-xs px-3 py-2 rounded-lg bg-emerald-800" onclick="decideMgmtApplication('${a.id}','approved')">Freigeben</button><button class="text-xs px-3 py-2 rounded-lg bg-amber-800" onclick="decideMgmtApplication('${a.id}','revision')">Nachbesserung</button><button class="text-xs px-3 py-2 rounded-lg bg-rose-900" onclick="decideMgmtApplication('${a.id}','rejected')">Ablehnen</button></div>`
+          ? `<div class="flex flex-wrap gap-2 mt-2"><button class="text-xs px-3 py-2 rounded-lg bg-sky-900" onclick="editMgmtApplication('${a.id}')">Bearbeiten</button><button class="text-xs px-3 py-2 rounded-lg bg-emerald-800" onclick="decideMgmtApplication('${a.id}','approved')">Freigeben</button><button class="text-xs px-3 py-2 rounded-lg bg-amber-800" onclick="decideMgmtApplication('${a.id}','revision')">Nachbesserung</button><button class="text-xs px-3 py-2 rounded-lg bg-rose-900" onclick="decideMgmtApplication('${a.id}','rejected')">Ablehnen</button></div>`
           : currentRole === 'Daisy' && a.status === 'revision'
           ? `<button class="text-xs px-3 py-2 rounded-lg bg-amber-800 mt-2" onclick="reviseMgmtApplication('${a.id}')">Überarbeiten und erneut einreichen</button>` : '';
         return `<div class="rounded-lg bg-white/5 p-3 text-sm"><strong>${escapeHtml(a.item?.title || '')}</strong><span class="ml-2 text-xs text-amber-300">${labels[a.status] || a.status}</span><p class="text-xs text-slate-400 mt-1">${escapeHtml(a.item?.desc || '')}</p>${a.comment ? `<p class="text-xs mt-2">Kommentar: ${escapeHtml(a.comment)}</p>` : ''}${actions}</div>`;
       }).join('');
+    }
+    function editMgmtApplication(id) {
+      if (currentRole !== 'Master') return;
+      const a = (appState.mgmtApplications || []).find(x => x.id === id);
+      if (!a || a.status !== 'pending' || !a.item || a.item.masterLocked) return;
+      const title = prompt('Antragsbezeichnung bearbeiten:', a.item.title || '');
+      if (title === null || !title.trim()) return;
+      const desc = prompt('Antragsbeschreibung bearbeiten:', a.item.desc || '');
+      if (desc === null) return;
+      let points = a.item.rewardPoints;
+      if (['belohnungen','strafen'].includes(a.category)) {
+        const entered = prompt('Punktwert des Eintrags:', String(rewardAmount(points)));
+        if (entered === null) return;
+        points = rewardAmount(entered);
+      }
+      a.item.title = title.trim(); a.item.desc = desc.trim();
+      if (['belohnungen','strafen'].includes(a.category)) a.item.rewardPoints = points;
+      a.history = [...(a.history || []), {action:'edited',role:currentRole,at:Date.now()}];
+      persistState(); refreshAllUI();
     }
     function decideMgmtApplication(id, decision) {
       if (currentRole !== 'Master' || !['approved','revision','rejected'].includes(decision)) return;
