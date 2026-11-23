@@ -3847,8 +3847,44 @@
       menuNewHighlights[tab] = new Set(ids);
       badgeSave(tab, badgeItems(tab).map(x => String(x.id)));
     }
+    function mgmtAttentionCount(cat) {
+      return (appState.mgmtApplications || []).filter(a =>
+        a.category === cat && a.item &&
+        ((currentRole === 'Master' && a.status === 'pending') ||
+         (currentRole === 'Daisy' && a.status === 'revision' && a.item.createdBy === 'Daisy') ||
+         isMgmtDecisionUnread(a))
+      ).length;
+    }
+    function updateMgmtNavigationBadges() {
+      const categories = MGMT_CATEGORIES.filter(cat => cat.id !== 'aufgaben' &&
+        (currentRole === 'Master' || hasPermission(cat.id,'visible')));
+      let total = 0;
+      for (const cat of categories) {
+        const count = mgmtAttentionCount(cat.id);
+        total += count;
+        const button = document.querySelector('#verwaltung-subtabs [data-mgmt-category="' + cat.id + '"]');
+        if (!button) continue;
+        const badge = button.querySelector('.dominion-mgmt-count');
+        if (badge) {
+          badge.textContent = count > 99 ? '99+' : String(count);
+          badge.classList.toggle('hidden', count === 0);
+        }
+      }
+      const button = document.querySelector('.nav-btn[data-tab="verwaltung"]');
+      if (!button) return;
+      button.classList.add('relative');
+      let badge = button.querySelector('.dominion-menu-count');
+      if (!badge) {
+        badge = document.createElement('span');
+        badge.className = 'dominion-menu-count absolute top-0 right-0 min-w-[17px] h-[17px] px-1 rounded-full bg-rose-600 text-white text-[10px] leading-[17px] text-center font-bold shadow pointer-events-none hidden';
+        button.appendChild(badge);
+      }
+      badge.textContent = total > 99 ? '99+' : String(total);
+      badge.classList.toggle('hidden', total === 0);
+    }
     function badgeRefresh() {
       if (!currentRole) return;
+      updateMgmtNavigationBadges();
       if (menuLastRole !== currentRole) {
         menuLastRole = currentRole;
         menuNewHighlights = {chat:new Set(), kalender:new Set(), aufgaben:new Set()};
@@ -4336,6 +4372,7 @@
           badge.textContent = unread ? '● ' + unread + ' neue Entscheidung' + (unread === 1 ? '' : 'en') : '';
         }
       }
+      updateMgmtNavigationBadges();
       const redemptions = (appState.rewardLedger || []).filter(row => row && row.redemption);
       document.getElementById('stat-eingeloeste-belohnungen').textContent = redemptions.filter(row => row.redemption.mode === 'belohnungen' && row.redemption.status === 'completed').length;
       document.getElementById('stat-erwartete-bestrafungen').textContent = redemptions.filter(row => row.redemption.mode === 'strafen' && row.redemption.status !== 'completed').length;
@@ -6466,15 +6503,16 @@
       }
 
       subTabsEl.innerHTML = visibleCats.map(cat => `
-        <button onclick="selectMgmtCategory('${cat.id}')"
+        <button data-mgmt-category="${cat.id}" onclick="selectMgmtCategory('${cat.id}')"
                 class="px-3.5 py-2 rounded-xl text-xs font-semibold whitespace-nowrap transition ${
                   activeMgmtCategory === cat.id
                     ? 'gold-gradient shadow'
                     : 'bg-white/5 text-slate-300 hover:bg-white/10'
                 }">
-          ${cat.label}
+          ${cat.label}<span class="dominion-mgmt-count ${mgmtAttentionCount(cat.id) ? '' : 'hidden'} ml-1.5 inline-flex items-center justify-center min-w-[18px] h-[18px] px-1 rounded-full bg-rose-600 text-white text-[10px] font-bold">${mgmtAttentionCount(cat.id)}</span>
         </button>
       `).join('');
+      updateMgmtNavigationBadges();
 
       const canAdd = hasPermission(activeMgmtCategory, 'add');
       const ideasButton = document.getElementById('mgmt-ideas-button');
