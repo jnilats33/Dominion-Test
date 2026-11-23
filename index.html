@@ -674,8 +674,11 @@
             <!-- Rendered dynamically -->
           </div>
 
+          <button id="mgmt-popup-launch" type="button" onclick="openMgmtPopup()" class="hidden mb-4 px-4 py-2.5 rounded-xl gold-gradient font-semibold text-sm">＋ Neuen Eintrag anlegen</button>
+          <div id="mgmt-popup-backdrop" class="hidden fixed inset-0 z-[90] bg-black/75 backdrop-blur-sm" onclick="closeMgmtPopup()"></div>
           <!-- Add Item Box -->
           <div id="mgmt-add-box" class="grid grid-cols-1 sm:grid-cols-3 gap-2.5 mb-5 p-3.5 rounded-xl bg-white/[0.03] border border-slate-800">
+            <div id="mgmt-popup-header" class="hidden col-span-1 sm:col-span-3 flex items-center justify-between gap-3"><h3 id="mgmt-popup-heading" class="text-lg font-semibold text-amber-300">Neuer Eintrag</h3><button type="button" onclick="closeMgmtPopup()" class="px-3 py-2 rounded-lg bg-white/10 text-sm" aria-label="Schließen">✕</button></div>
             <input id="mgmt-title" type="text" placeholder="Bezeichnung..." class="px-3.5 py-2.5 text-sm" />
             <input id="mgmt-desc" type="text" placeholder="Details / Beschreibung..." class="px-3.5 py-2.5 text-sm" /><label id="mgmt-points-wrap" class="hidden text-xs text-slate-300">Punktwert<input id="mgmt-points" type="number" min="0" step="1" value="0" class="w-full mt-1 px-3 py-2 rounded-lg" /></label>
             <button id="mgmt-ideas-button" type="button" onclick="openDominionIdeas(activeMgmtCategory)" class="hidden sm:col-span-3 col-span-1 text-left text-xs px-3 py-2 rounded-lg bg-amber-500/10 border border-amber-500/30 text-amber-200 hover:bg-amber-500/20">💡 Ideen ansehen – 10 Vorschläge</button>
@@ -6322,6 +6325,42 @@
     }
     function reviseMgmtApplication(id) { openApplicationDialog(id,'revision'); }
 
+    let mgmtPopupOpen = false;
+    function mgmtPopupCategory() { return ['kleidung','toys'].includes(activeMgmtCategory); }
+    function syncMgmtPopup() {
+      const box = document.getElementById('mgmt-add-box');
+      const launch = document.getElementById('mgmt-popup-launch');
+      const backdrop = document.getElementById('mgmt-popup-backdrop');
+      const header = document.getElementById('mgmt-popup-header');
+      const isPopup = mgmtPopupCategory();
+      const canOpen = hasPermission(activeMgmtCategory, 'add') || !!mgmtEditingItemId;
+      launch.classList.toggle('hidden', !isPopup || !canOpen || !!mgmtEditingItemId);
+      if (isPopup) launch.textContent = activeMgmtCategory === 'kleidung' ? '＋ Neues Kleidungsstück' : '＋ Neues Toy';
+      const show = isPopup && mgmtPopupOpen && canOpen;
+      backdrop.classList.toggle('hidden', !show);
+      header.classList.toggle('hidden', !show);
+      for (const cls of ['fixed','z-[100]','left-1/2','top-1/2','-translate-x-1/2','-translate-y-1/2','w-[min(94vw,620px)]','max-h-[90vh]','overflow-y-auto']) box.classList.toggle(cls, show);
+      box.style.display = isPopup && !show ? 'none' : '';
+      if (show) document.getElementById('mgmt-popup-heading').textContent = (mgmtEditingItemId ? 'Bearbeiten: ' : 'Neu: ') + (activeMgmtCategory === 'kleidung' ? 'Kleidung' : 'Toy');
+    }
+    function openMgmtPopup() {
+      if (!mgmtPopupCategory() || !hasPermission(activeMgmtCategory, 'add')) return;
+      mgmtPopupOpen = true;
+      syncMgmtPopup();
+      document.getElementById('mgmt-title').focus();
+    }
+    function closeMgmtPopup() {
+      mgmtPopupOpen = false;
+      if (mgmtEditingItemId && mgmtPopupCategory()) {
+        cancelMgmtEdit();
+      } else {
+        document.getElementById('mgmt-title').value = '';
+        document.getElementById('mgmt-desc').value = '';
+        clearMgmtDraftImage();
+        syncMgmtPopup();
+      }
+    }
+
     function renderVerwaltung() {
       const visibleCats = MGMT_CATEGORIES.filter(cat => cat.id !== 'aufgaben' && hasPermission(cat.id, 'visible'));
       const subTabsEl = document.getElementById('verwaltung-subtabs');
@@ -6367,6 +6406,7 @@
       document.getElementById('mgmt-submit-button').onclick = isEditing ? saveMgmtEdit : addMgmtItem;
       document.getElementById('mgmt-cancel-edit').classList.toggle('hidden', !isEditing);
 
+      syncMgmtPopup();
       renderRewardGallery();
       renderMgmtApplications();
       numberMgmtItems(appState);
@@ -6424,7 +6464,7 @@
     }
 
     function selectMgmtCategory(catId) {
-      if (activeMgmtCategory !== catId) { cancelMgmtEdit(); clearMgmtDraftImage(); }
+      if (activeMgmtCategory !== catId) { mgmtPopupOpen = false; cancelMgmtEdit(); clearMgmtDraftImage(); }
       activeMgmtCategory = catId;
       renderVerwaltung();
     }
@@ -6441,8 +6481,9 @@
       const previewImg = document.getElementById('mgmt-image-preview-img');
       if (rewardImage(item,catId)) { previewImg.src = rewardImage(item,catId); preview.classList.remove('hidden'); }
       else { previewImg.src = ''; preview.classList.add('hidden'); }
+      if (mgmtPopupCategory()) mgmtPopupOpen = true;
       renderVerwaltung();
-      document.getElementById('mgmt-add-box').scrollIntoView({ behavior: 'smooth', block: 'center' });
+      if (!mgmtPopupCategory()) document.getElementById('mgmt-add-box').scrollIntoView({ behavior: 'smooth', block: 'center' });
     }
 
     function removeMgmtImage() {
@@ -6458,6 +6499,7 @@
       mgmtEditingItemId = null;
       document.getElementById('mgmt-title').value = ''; document.getElementById('mgmt-desc').value = '';
       clearMgmtDraftImage();
+      mgmtPopupOpen = false;
       renderVerwaltung();
     }
 
@@ -6485,7 +6527,7 @@
       logActivity('hat ' + (catObj ? catObj.singular : 'Eintrag') + ' bearbeitet: „' + oldTitle + '“ → „' + title + '“', 'verwaltung', catId, item.id);
       mgmtEditingItemId = null;
       document.getElementById('mgmt-title').value = ''; document.getElementById('mgmt-desc').value = '';
-      clearMgmtDraftImage(); document.getElementById('mgmt-points').value = '0'; persistState(); refreshAllUI(); showToast('Änderungen gespeichert.');
+      clearMgmtDraftImage(); document.getElementById('mgmt-points').value = '0'; mgmtPopupOpen = false; persistState(); refreshAllUI(); showToast('Änderungen gespeichert.');
     }
 
     function addMgmtItem() {
@@ -6521,6 +6563,7 @@
       document.getElementById('mgmt-desc').value = '';
       clearMgmtDraftImage();
       document.getElementById('mgmt-points').value = '0';
+      mgmtPopupOpen = false;
       persistState();
       refreshAllUI();
       showToast(needsReview ? 'Antrag zur Prüfung eingereicht.' : 'Eintrag angelegt.');
