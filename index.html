@@ -4378,7 +4378,30 @@
       document.getElementById('stat-erwartete-bestrafungen').textContent = redemptions.filter(row => row.redemption.mode === 'strafen' && row.redemption.status !== 'completed').length;
 
       const limit = parseInt(appState.basics.feedLimit || 20, 10);
-      const rawFeed = appState.activityFeed || [];
+      // Derive request lifecycle events from authoritative application history.
+      // No extra Firebase writes, and old requests become visible as well.
+      const applicationFeed = (appState.mgmtApplications || []).flatMap(a => {
+        if (!a || !a.id || !a.category) return [];
+        const events = Array.isArray(a.history) && a.history.length
+          ? a.history : [{action:a.status === 'pending' ? 'submitted' : a.status, role:a.status === 'pending' ? 'Daisy' : 'Master',at:a.decidedAt || a.createdAt}];
+        const names = {submitted:'Antrag gestellt',pending:'Antrag gestellt',
+          revision:'Zur Nachbesserung zurückverwiesen',approved:'Antrag freigegeben',
+          rejected:'Antrag abgelehnt'};
+        return events.filter(e => e && names[e.action] && Number(e.at || 0) > 0).map((e,i) => ({
+          id:'application-feed-' + a.id + '-' + i,
+          actorRole:e.role || (e.action === 'submitted' ? 'Daisy' : 'Master'),
+          action:names[e.action] + ': „' + (a.item?.title || 'Eintrag') + '“' +
+            (e.comment ? ' – ' + e.comment : ''),
+          targetTab:'verwaltung',targetSubCategory:a.category,
+          targetItemId:a.item?.id || null,permissionKey:a.category,
+          timestamp:Number(e.at)
+        }));
+      });
+      const reviewedItemIds = new Set((appState.mgmtApplications || []).map(a => String(a.item?.id || '')));
+      const rawFeed = [...applicationFeed, ...(appState.activityFeed || []).filter(e =>
+        !(e.targetTab === 'verwaltung' && reviewedItemIds.has(String(e.targetItemId || '')) &&
+          typeof e.action === 'string' && e.action.includes('hinzugefügt:'))
+      )].sort((a,b) => (b.timestamp || 0) - (a.timestamp || 0));
       const visibleFeed = currentRole === 'Daisy'
         ? rawFeed.filter(item => isActivityVisibleForDaisy(item))
         : rawFeed;
