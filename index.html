@@ -6496,6 +6496,23 @@
       document.getElementById('perm-username-toggle').checked = !!appState.permissions.username;
 
       const tbody = document.getElementById('permissions-matrix-body');
+      // Die Matrix konfiguriert die Rechte der zweiten Rolle; Beschriftungen
+      // beziehen sich immer auf die unter Einstellungen hinterlegten Rollennamen.
+      const roleLabels = [
+        ['editOwn', getDisplayName('Daisy') + ' bearbeiten'],
+        ['editOthers', getDisplayName('Master') + ' bearbeiten'],
+        ['deleteOwn', getDisplayName('Daisy') + ' löschen'],
+        ['deleteOthers', getDisplayName('Master') + ' löschen']
+      ];
+      const headings = tbody.closest('table')?.querySelectorAll('thead th');
+      if (headings && headings.length >= 7) {
+        roleLabels.forEach(([key, label], index) => {
+          headings[index + 3].textContent = label;
+          headings[index + 3].title = key.endsWith('Others')
+            ? 'Einträge der anderen Rolle sowie Altbestand ohne bekannten Ersteller'
+            : 'Einträge, die diese Rolle selbst erstellt hat';
+        });
+      }
       const table = tbody.closest('table');
       const header = table?.querySelector('thead tr');
       if (header && !header.querySelector('[data-points-heading]')) header.insertAdjacentHTML('beforeend', '<th data-points-heading class="p-2 text-center text-xs" title="Punkte je neuem Eintrag von Daisy">🎯 Punkte</th>');
