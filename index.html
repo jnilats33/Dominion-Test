@@ -6092,11 +6092,22 @@
       const timestamp = Date.now();
       try {
         const baseline = (await roomRef.once('value')).val();
+        // Compare server RAW data with the last server RAW snapshot.
+        // mergeWithDefaults() may add defaults and item numbering, so its
+        // normalized state is not a valid baseline for raw Firebase equality.
+        const checkedKeys = ['mgmtApplications','mgmt','rewardLedger'];
+        const mismatches = checkedKeys.filter(key =>
+          !sameRemoteValue(baseline?.[key],lastRemoteRawState?.[key]));
         if (!baseline || roomRef !== firebaseDbRef || productionSyncConflict ||
-            !sameRemoteValue(baseline.mgmtApplications,lastRemoteState.mgmtApplications) ||
-            !sameRemoteValue(baseline.mgmt,lastRemoteState.mgmt) ||
-            !sameRemoteValue(baseline.rewardLedger,lastRemoteState.rewardLedger))
-          throw new Error('Serverstand unterscheidet sich vom lokalen Stand.');
+            !lastRemoteRawState || mismatches.length) {
+          console.warn('TEST approval raw baseline mismatch', {
+            missingBaseline: !baseline, roomChanged: roomRef !== firebaseDbRef,
+            conflict: productionSyncConflict, missingRawSnapshot: !lastRemoteRawState,
+            mismatches
+          });
+          throw new Error('Serverstand unterscheidet sich vom lokalen Stand' +
+            (mismatches.length ? ' (' + mismatches.join(', ') + ')' : '') + '.');
+        }
         const result = await new Promise((resolve,reject) => {
           roomRef.transaction(current => {
             if (!current || !sameRemoteValue(current,baseline)) return;
