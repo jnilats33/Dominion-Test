@@ -4243,17 +4243,52 @@
     function isMgmtDecisionUnread(a) {
       if (currentRole !== 'Daisy' || a.item?.createdBy !== 'Daisy' ||
           !['approved','rejected'].includes(a.status)) return false;
+      if (a.readByDaisyAt && Number(a.readByDaisyAt) >= Number(a.decidedAt || 0)) return false;
       try { return localStorage.getItem(mgmtDecisionReadKey(a)) !== '1'; }
       catch (err) { return true; }
     }
-    function acknowledgeMgmtDecision(id) {
-      if (currentRole !== 'Daisy') return;
+    let mgmtReadReceiptPending = false;
+    async function acknowledgeMgmtDecision(id) {
+      if (currentRole !== 'Daisy' || mgmtReadReceiptPending) return;
       const a = (appState.mgmtApplications || []).find(x => x.id === id);
       if (!a || !isMgmtDecisionUnread(a)) return;
-      try { localStorage.setItem(mgmtDecisionReadKey(a),'1'); }
-      catch (err) { showToast('Lesebestätigung konnte nicht gespeichert werden.', 'error'); return; }
-      renderDashboard();
-      renderMgmtApplications();
+      if (location.hostname !== 'jnilats33.github.io' ||
+          !location.pathname.startsWith('/Dominion-Test/') ||
+          firebaseRoomPathPending !== DEVELOPMENT_TEST_ROOM ||
+          !firebaseDbRef || !productionRoomLoaded || productionSyncConflict ||
+          !testAuthUser || testAuthRole !== 'Daisy' || isApplyingRemoteUpdate) {
+        showToast('Lesebestätigung nicht gespeichert: TEST-Synchronisation prüfen.', 'error');
+        return;
+      }
+      mgmtReadReceiptPending = true;
+      try {
+        const decidedAt = Number(a.decidedAt || 0);
+        const result = await new Promise((resolve,reject) => {
+          firebaseDbRef.child('mgmtApplications').transaction(current => {
+            if (!Array.isArray(current)) return;
+            const entry = current.find(x => x && x.id === id);
+            if (!entry || entry.item?.createdBy !== 'Daisy' ||
+                !['approved','rejected'].includes(entry.status) ||
+                Number(entry.decidedAt || 0) !== decidedAt) return;
+            if (Number(entry.readByDaisyAt || 0) >= decidedAt && decidedAt > 0) return;
+            entry.readByDaisyAt = Date.now();
+            return current;
+          },(error,committed,snapshot) => error ? reject(error) : resolve({committed,snapshot}),false);
+        });
+        const confirmed = result.committed ||
+          (result.snapshot?.val() || []).some(x => x && x.id === id &&
+            Number(x.decidedAt || 0) === decidedAt &&
+            Number(x.readByDaisyAt || 0) >= decidedAt);
+        if (!confirmed) throw new Error('Serverstand geändert; bitte erneut versuchen.');
+        try { localStorage.setItem(mgmtDecisionReadKey(a),'1'); } catch (err) {}
+        showToast('Entscheidung als gelesen gespeichert.');
+        renderDashboard();
+        renderMgmtApplications();
+      } catch (err) {
+        showToast('Lesebestätigung nicht gespeichert: ' + (err.message || String(err)), 'error');
+      } finally {
+        mgmtReadReceiptPending = false;
+      }
     }
 
     function renderDashboard() {
