@@ -5869,7 +5869,9 @@
 
     const REWARD_GALLERY = {
       belohnungen: [['film','🎬'],['geschenk','🎁'],['kerzen','🕯️'],['essen','🍰'],['musik','🎧'],['bad','🛁'],['reise','✈️'],['buch','📖'],['blumen','💐'],['sterne','🌟']],
-      strafen: [['hammer','🔨'],['uhr','⏳'],['blitz','⚡'],['kette','⛓️'],['schloss','🔒'],['glocke','🔔'],['schild','🛡️'],['ziel','🎯'],['karte','🃏'],['waage','⚖️']]
+      strafen: [['hammer','🔨'],['uhr','⏳'],['blitz','⚡'],['kette','⛓️'],['schloss','🔒'],['glocke','🔔'],['schild','🛡️'],['ziel','🎯'],['karte','🃏'],['waage','⚖️']],
+      kleidung: [['allgemein','👚'],['jacke','🧥'],['schuhe','👟'],['pullover','🧶'],['tshirt','👕'],['hose','👖'],['kleid','👗'],['hemd','👔'],['socken','🧦'],['muetze','🧢']],
+      toys: [['allgemein','🎲'],['puzzle','🧩'],['teddy','🧸'],['spiel','🎮'],['wuerfel','🎲'],['ball','⚽'],['roboter','🤖'],['auto','🚗'],['rakete','🚀'],['joystick','🕹️']]
     };
     function galleryImage(cat, id) {
       const options = REWARD_GALLERY[cat] || [];
@@ -5892,6 +5894,7 @@
       if (item.galleryImageId) return galleryImage(cat,item.galleryImageId);
       // Existing catalog entries get a stable visual fallback without migrating room data.
       if (REWARD_GALLERY[cat]) {
+        if (['kleidung','toys'].includes(cat)) return galleryImage(cat, 'allgemein');
         const key = String(item.id || item.title || '');
         let hash = 0;
         for (let i = 0; i < key.length; i++) hash = ((hash * 31) + key.charCodeAt(i)) >>> 0;
@@ -5900,7 +5903,7 @@
       return '';
     }
     function chooseRewardGallery(id) {
-      if (!['belohnungen','strafen'].includes(activeMgmtCategory)) return;
+      if (!REWARD_GALLERY[activeMgmtCategory]) return;
       if (!(REWARD_GALLERY[activeMgmtCategory] || []).some(entry=>entry[0]===id)) return;
       mgmtDraftImage = null; mgmtImageRemoved = false;
       mgmtDraftGalleryId = id;
@@ -5916,7 +5919,7 @@
       const options = REWARD_GALLERY[activeMgmtCategory];
       box.classList.toggle('hidden',!options);
       if (!options) return;
-      box.innerHTML = '<p class="text-xs text-amber-200 mb-2">Illustration auswählen (ohne Auswahl: Zufallsmotiv)</p>' +
+      box.innerHTML = '<p class="text-xs text-amber-200 mb-2">Illustration auswählen (ohne Auswahl: ' + (['kleidung','toys'].includes(activeMgmtCategory) ? 'allgemeines Kategorienmotiv' : 'Zufallsmotiv') + ')</p>' +
         '<div class="grid grid-cols-5 gap-2">' + options.map(([id]) =>
           '<button type="button" title="' + id + '" onclick="chooseRewardGallery(\'' + id +
           '\')" class="rounded-lg border p-1 ' +
@@ -6472,11 +6475,11 @@
       if (['kleidung','toys','belohnungen','strafen'].includes(catId)) {
         if (mgmtDraftImage) { item.imgUrl = mgmtDraftImage; delete item.galleryImageId; }
         else if (mgmtDraftGalleryId) { item.galleryImageId = mgmtDraftGalleryId; delete item.imgUrl; }
-        else if (mgmtImageRemoved && ['belohnungen','strafen'].includes(catId)) {
-          item.galleryImageId = randomRewardGalleryId(catId); delete item.imgUrl;
+        else if (mgmtImageRemoved && REWARD_GALLERY[catId]) {
+          item.galleryImageId = ['kleidung','toys'].includes(catId) ? 'allgemein' : randomRewardGalleryId(catId); delete item.imgUrl;
         } else if (mgmtImageRemoved) delete item.imgUrl;
-        if (['belohnungen','strafen'].includes(catId) && !rewardImage(item,catId))
-          item.galleryImageId = randomRewardGalleryId(catId);
+        if (REWARD_GALLERY[catId] && !rewardImage(item,catId))
+          item.galleryImageId = ['kleidung','toys'].includes(catId) ? 'allgemein' : randomRewardGalleryId(catId);
       }
       const catObj = MGMT_CATEGORIES.find(category => category.id === catId);
       logActivity('hat ' + (catObj ? catObj.singular : 'Eintrag') + ' bearbeitet: „' + oldTitle + '“ → „' + title + '“', 'verwaltung', catId, item.id);
@@ -6500,8 +6503,8 @@
       const newItem = { id: 'mgmt-' + Date.now() + '-' + Math.random().toString(36).slice(2, 7), itemNumber: prefix + '-' + String(next).padStart(4, '0'), title, desc, done: false, createdBy: currentRole };
       if (['belohnungen','strafen'].includes(activeMgmtCategory)) newItem.rewardPoints = rewardAmount(document.getElementById('mgmt-points').value);
       if (['kleidung','toys','belohnungen','strafen'].includes(activeMgmtCategory) && mgmtDraftImage) newItem.imgUrl = mgmtDraftImage;
-      if (['belohnungen','strafen'].includes(activeMgmtCategory) && !mgmtDraftImage)
-        newItem.galleryImageId = mgmtDraftGalleryId || randomRewardGalleryId(activeMgmtCategory);
+      if (REWARD_GALLERY[activeMgmtCategory] && !mgmtDraftImage)
+        newItem.galleryImageId = mgmtDraftGalleryId || (['kleidung','toys'].includes(activeMgmtCategory) ? 'allgemein' : randomRewardGalleryId(activeMgmtCategory));
       if (!Array.isArray(appState.mgmt[activeMgmtCategory])) {
         appState.mgmt[activeMgmtCategory] = [];
       }
