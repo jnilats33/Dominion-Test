@@ -6043,7 +6043,7 @@
         (currentRole === 'Master' || a.item?.createdBy === currentRole));
       const requestsOpen = panel.querySelector('[data-str-section="requests"]')?.open ?? true;
       const historyOpen = panel.querySelector('details')?.open ?? false;
-      panel.classList.toggle('hidden', activeMgmtCategory !== 'strafen' && !applications.length && !history.length);
+      panel.classList.toggle('hidden', !MGMT_CATEGORIES.some(cat => cat.id === activeMgmtCategory && cat.id !== 'aufgaben' && (appState.permissions?.[cat.id]?.reviewRequired || applications.length || history.length)));
       const labels = {pending:'Zur Prüfung',revision:'Nachbesserung erforderlich',rejected:'Abgelehnt',approved:'Freigegeben'};
       panel.innerHTML = (applications.length ? '<h3 class="font-semibold text-amber-300">Anträge zur Bearbeitung</h3>' : '') + applications.map(a => {
         const actions = currentRole === 'Master' && a.status === 'pending'
@@ -6061,7 +6061,7 @@
               (a.comment ? '<p class="mt-2 whitespace-pre-wrap break-words"><strong>Begründung:</strong> ' + escapeHtml(a.comment) + '</p>' : '<p class="text-xs text-slate-400 mt-2">Keine Begründung hinterlegt.</p>') +
               '</div>';
           }).join('') + '</div></details>' : '');
-      if (activeMgmtCategory === 'strafen') {
+      if (!panel.classList.contains('hidden')) {
         // Keep the existing request cards and actions intact; group only their DOM nodes.
         const requestSection = document.createElement('details');
         requestSection.dataset.strSection = 'requests';
@@ -6372,14 +6372,14 @@
       const rewardCategory = ['belohnungen', 'strafen'].includes(activeMgmtCategory);
       const catalogOpen = listEl.querySelector('[data-str-section="catalog"]')?.open ?? false;
       const wrapCatalog = () => {
-        if (activeMgmtCategory !== 'strafen') return;
+        if (!MGMT_CATEGORIES.some(cat => cat.id === activeMgmtCategory && cat.id !== 'aufgaben' && (appState.permissions?.[cat.id]?.reviewRequired || (appState.mgmtApplications || []).some(a => a.category === cat.id)))) return;
         const section = document.createElement('details');
         section.dataset.strSection = 'catalog';
         section.className = 'rounded-xl border border-slate-700 p-3';
         section.open = catalogOpen;
         const summary = document.createElement('summary');
         summary.className = 'cursor-pointer font-semibold text-amber-300';
-        summary.textContent = 'Strafenkatalog (' + items.length + ')';
+        summary.textContent = (activeMgmtCategory === 'strafen' ? 'Strafenkatalog' : activeMgmtCategory === 'belohnungen' ? 'Belohnungskatalog' : activeMgmtCategory === 'kleidung' ? 'Kleidungskatalog' : activeMgmtCategory === 'toys' ? 'Toy-Katalog' : 'Regelkatalog') + ' (' + items.length + ')';
         section.appendChild(summary);
         const content = document.createElement('div');
         content.className = 'space-y-2.5 mt-3';
