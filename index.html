@@ -5049,7 +5049,7 @@
 
     function toggleShoppingItem(id) {
       const item = appState.einkauf.find(i => i.id === id);
-      if (!item || !canChangeEntry(catId, 'edit', item)) return;
+      if (!item || !canChangeEntry('einkauf', 'edit', item)) return;
       item.done = !item.done;
       item.lastEditedBy = currentRole;
       logActivity(`hat Einkaufsartikel ${item.done ? 'abgehakt' : 'wieder geöffnet'}: „${item.name}“`, 'einkauf', null, item.id);
