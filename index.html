@@ -6029,7 +6029,7 @@
       if (!panel) {
         panel = document.createElement('div');
         panel.id = 'mgmt-applications-panel';
-        panel.className = 'rounded-xl border border-amber-800/50 p-4 space-y-3';
+        panel.className = 'space-y-3';
         document.getElementById('mgmt-items-list').before(panel);
       }
       // Completed requests remain in Firebase for audit/history, but not in the active queue.
@@ -6041,16 +6041,19 @@
         a.category === activeMgmtCategory &&
         ['approved','rejected'].includes(a.status) &&
         (currentRole === 'Master' || a.item?.createdBy === currentRole));
-      panel.classList.toggle('hidden', !applications.length && !history.length);
+      // Keep each section's expanded state when the UI refreshes.
+      const requestsWasOpen = panel.querySelector('#mgmt-requests-section')?.open ?? true;
+      const historyWasOpen = panel.querySelector('#mgmt-history-section')?.open ?? false;
+      panel.classList.toggle('hidden', activeMgmtCategory !== 'strafen');
       const labels = {pending:'Zur Prüfung',revision:'Nachbesserung erforderlich',rejected:'Abgelehnt',approved:'Freigegeben'};
-      panel.innerHTML = (applications.length ? '<h3 class="font-semibold text-amber-300">Anträge zur Bearbeitung</h3>' : '') + applications.map(a => {
+      panel.innerHTML = '<details id="mgmt-requests-section" class="rounded-xl border border-amber-800/50 p-3" ' + (requestsWasOpen ? 'open' : '') + '><summary class="cursor-pointer font-semibold text-amber-300">Anträge zur Bearbeitung (' + applications.length + ')</summary><div class="space-y-3 mt-3">' + (applications.length ? '' : '<p class="text-xs text-slate-400">Keine offenen Anträge.</p>') + applications.map(a => {
         const actions = currentRole === 'Master' && a.status === 'pending'
           ? `<div class="flex flex-wrap gap-2 mt-2"><button class="text-xs px-3 py-2 rounded-lg bg-sky-900" onclick="openApplicationDialog('${a.id}','edit')">Bearbeiten</button><button class="text-xs px-3 py-2 rounded-lg bg-emerald-800" onclick="decideMgmtApplication('${a.id}','approved')">Freigeben</button><button class="text-xs px-3 py-2 rounded-lg bg-amber-800" onclick="decideMgmtApplication('${a.id}','revision')">Nachbesserung</button><button class="text-xs px-3 py-2 rounded-lg bg-rose-900" onclick="decideMgmtApplication('${a.id}','rejected')">Ablehnen</button></div>`
           : currentRole === 'Daisy' && a.status === 'revision'
           ? `<button class="text-xs px-3 py-2 rounded-lg bg-amber-800 mt-2" onclick="reviseMgmtApplication('${a.id}')">Überarbeiten und erneut einreichen</button>` : '';
         return `<div class="rounded-lg border border-slate-700/60 bg-slate-900/50 p-3 text-sm"><div class="${a.status !== 'approved' ? 'opacity-65 saturate-0' : ''}"><strong class="text-slate-300">${escapeHtml(a.item?.title || '')}</strong><span class="ml-2 text-xs text-slate-400">${labels[a.status] || a.status}</span><p class="text-xs text-slate-400 mt-1">${escapeHtml(a.item?.desc || '')}</p>${rewardImage(a.item || {}, a.category) ? `<img src="${escapeHtml(rewardImage(a.item || {}, a.category))}" alt="Bild zu ${escapeHtml(a.item?.title || 'Antrag')}" loading="lazy" class="rounded-xl max-h-48 w-auto mt-2 border border-slate-700 ${a.status !== 'approved' ? 'grayscale' : ''}" />` : ''}${a.comment ? `<p class="text-xs mt-2">Kommentar: ${escapeHtml(a.comment)}</p>` : ''}</div>${actions}</div>`;
-      }).join('') +
-        (history.length ? '<details class="rounded-lg border border-slate-700 p-3 mt-3"><summary class="cursor-pointer text-sm font-semibold text-amber-300">Antragsverlauf (' + history.length + ')</summary><div class="space-y-2 mt-3">' +
+      }).join('') + '</div></details>' +
+        '<details id="mgmt-history-section" class="rounded-xl border border-slate-700 p-3" ' + (historyWasOpen ? 'open' : '') + '><summary class="cursor-pointer font-semibold text-amber-300">Antragsverlauf (' + history.length + ')</summary><div class="space-y-2 mt-3">' + (history.length ? '' : '<p class="text-xs text-slate-400">Noch keine abgeschlossenen Anträge.</p>') +
           history.slice().sort((a,b) => (b.decidedAt || b.createdAt || 0) - (a.decidedAt || a.createdAt || 0)).map(a => {
             const when = a.decidedAt ? new Date(a.decidedAt).toLocaleString('de-DE') : '';
             return '<div class="rounded-lg border border-slate-700 bg-slate-900/60 p-3 text-sm">' +
@@ -6058,7 +6061,7 @@
               (when ? '<p class="text-xs text-slate-400 mt-1">Entscheidung: ' + escapeHtml(when) + '</p>' : '') +
               (a.comment ? '<p class="mt-2 whitespace-pre-wrap break-words"><strong>Begründung:</strong> ' + escapeHtml(a.comment) + '</p>' : '<p class="text-xs text-slate-400 mt-2">Keine Begründung hinterlegt.</p>') +
               '</div>';
-          }).join('') + '</div></details>' : '');
+          }).join('') + '</div></details>';
     }
     function editMgmtApplication(id) {
       if (currentRole !== 'Master') return;
@@ -6304,7 +6307,7 @@
                 }">
           ${cat.label}
         </button>
-      `).join('');
+      `).join(''));
 
       const canAdd = hasPermission(activeMgmtCategory, 'add');
       const ideasButton = document.getElementById('mgmt-ideas-button');
@@ -6330,13 +6333,17 @@
       const items = appState.mgmt[activeMgmtCategory] || [];
       const listEl = document.getElementById('mgmt-items-list');
       const rewardCategory = ['belohnungen', 'strafen'].includes(activeMgmtCategory);
+      const catalogWasOpen = listEl.querySelector('#mgmt-catalog-section')?.open ?? false;
+      const catalogWrap = html => activeMgmtCategory === 'strafen'
+        ? '<details id="mgmt-catalog-section" class="rounded-xl border border-slate-700 p-3" ' + (catalogWasOpen ? 'open' : '') + '><summary class="cursor-pointer font-semibold text-amber-300">Strafenkatalog (' + items.length + ')</summary><div class="space-y-2.5 mt-3">' + html + '</div></details>'
+        : html;
 
       if (items.length === 0) {
-        listEl.innerHTML = `<p class="text-xs text-slate-500 text-center py-6">Noch keine Einträge in dieser Kategorie.</p>`;
+        listEl.innerHTML = catalogWrap(`<p class="text-xs text-slate-500 text-center py-6">Noch keine Einträge in dieser Kategorie.</p>`);
         return;
       }
 
-      listEl.innerHTML = items.map(item => `
+      listEl.innerHTML = catalogWrap(items.map(item => `
         <div id="item-${item.id}" class="p-3.5 rounded-xl bg-white/[0.03] border border-slate-800 flex items-center justify-between gap-3">
           <div class="flex-1 min-w-0">
             <div class="flex items-center gap-2">
