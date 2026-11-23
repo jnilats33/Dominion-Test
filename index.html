@@ -693,8 +693,8 @@
               <input id="mgmt-image-file" type="file" accept="image/*" class="hidden" onchange="handleMgmtImageSelect(event)" />
               <input id="mgmt-image-camera" type="file" accept="image/*" capture="environment" class="hidden" onchange="handleMgmtImageSelect(event)" />
               <div id="mgmt-gallery" class="hidden"></div>
-              <div id="mgmt-image-preview" class="hidden">
-                <img id="mgmt-image-preview-img" alt="Bildvorschau" class="rounded-xl max-h-48 w-auto border border-slate-700" />
+              <div id="mgmt-image-preview" class="hidden w-full min-w-0 overflow-hidden">
+                <img id="mgmt-image-preview-img" alt="Bildvorschau" class="block w-40 h-40 max-w-full object-contain rounded-xl border border-slate-700 bg-slate-900" />
               </div>
             </div>
           </div>
@@ -6326,7 +6326,7 @@
     function reviseMgmtApplication(id) { openApplicationDialog(id,'revision'); }
 
     let mgmtPopupOpen = false;
-    function mgmtPopupCategory() { return ['kleidung','toys'].includes(activeMgmtCategory); }
+    function mgmtPopupCategory() { return ['kleidung','toys','strafen','belohnungen'].includes(activeMgmtCategory); }
     function syncMgmtPopup() {
       const box = document.getElementById('mgmt-add-box');
       const launch = document.getElementById('mgmt-popup-launch');
@@ -6335,13 +6335,13 @@
       const isPopup = mgmtPopupCategory();
       const canOpen = hasPermission(activeMgmtCategory, 'add') || !!mgmtEditingItemId;
       launch.classList.toggle('hidden', !isPopup || !canOpen || !!mgmtEditingItemId);
-      if (isPopup) launch.textContent = activeMgmtCategory === 'kleidung' ? '＋ Neues Kleidungsstück' : '＋ Neues Toy';
+      if (isPopup) launch.textContent = ({kleidung:'＋ Neues Kleidungsstück',toys:'＋ Neues Toy',strafen:'＋ Neue Strafe',belohnungen:'＋ Neue Belohnung'})[activeMgmtCategory];
       const show = isPopup && mgmtPopupOpen && canOpen;
       backdrop.classList.toggle('hidden', !show);
       header.classList.toggle('hidden', !show);
       for (const cls of ['fixed','z-[100]','left-1/2','top-1/2','-translate-x-1/2','-translate-y-1/2','w-[min(94vw,620px)]','max-h-[90vh]','overflow-y-auto']) box.classList.toggle(cls, show);
       box.style.display = isPopup && !show ? 'none' : '';
-      if (show) document.getElementById('mgmt-popup-heading').textContent = (mgmtEditingItemId ? 'Bearbeiten: ' : 'Neu: ') + (activeMgmtCategory === 'kleidung' ? 'Kleidung' : 'Toy');
+      if (show) document.getElementById('mgmt-popup-heading').textContent = (mgmtEditingItemId ? 'Bearbeiten: ' : 'Neu: ') + ({kleidung:'Kleidung',toys:'Toy',strafen:'Strafe',belohnungen:'Belohnung'})[activeMgmtCategory];
     }
     function openMgmtPopup() {
       if (!mgmtPopupCategory() || !hasPermission(activeMgmtCategory, 'add')) return;
