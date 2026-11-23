@@ -896,8 +896,10 @@
                     <th class="p-3.5">Bereich</th>
                     <th class="p-3.5 text-center">Sichtbar</th>
                     <th class="p-3.5 text-center">Hinzufügen</th>
-                    <th class="p-3.5 text-center">Bearbeiten</th>
-                    <th class="p-3.5 text-center">Löschen</th>
+                    <th class="p-3.5 text-center">Eigene bearbeiten</th>
+                    <th class="p-3.5 text-center">Fremde bearbeiten</th>
+                    <th class="p-3.5 text-center">Eigene löschen</th>
+                    <th class="p-3.5 text-center">Fremde löschen</th>
                   </tr>
                 </thead>
                 <tbody id="permissions-matrix-body" class="divide-y divide-slate-800">
@@ -3765,6 +3767,16 @@
       } catch(e) { console.warn('Push-Einstellung nicht gespeichert:',e); showToast('Push-Einstellung nicht gespeichert.','error'); }
       finally { pushSaving=false; renderPushPrefs(); }
     }
+    function canChangeEntry(category, action, entry) {
+      if (currentRole === 'Master') return true;
+      if (!entry || !['edit','delete'].includes(action)) return false;
+      const permissions = appState.permissions?.[category];
+      if (!permissions || !permissions.visible) return false;
+      // Unknown authorship is treated as foreign; never infer from assignee or owner.
+      const own = entry.createdBy === currentRole;
+      const field = action + (own ? 'Own' : 'Others');
+      return typeof permissions[field] === 'boolean' ? permissions[field] : !!permissions[action];
+    }
     function hasPermission(category, action) {
       if (currentRole === 'Master') return true;
       if (category === 'username') return !!appState.permissions.username;
@@ -4883,9 +4895,8 @@
       persistState(); refreshAllUI(); showToast(owners.length === 2 ? 'Zwei verknüpfte Termine gespeichert.' : 'Termin gespeichert.');
     }
     function editCalendarEvent(id) {
-      if (currentRole !== 'Master' && !hasPermission('kalender','edit')) return;
       const ev = appState.kalender.find(x => x.id === id);
-      if (!ev) return;
+      if (!ev || !canChangeEntry('kalender','edit',ev)) return;
       calendarEditingId = id;
       document.getElementById('cal-title').value = ev.title;
       document.getElementById('cal-date').value = ev.date;
@@ -4944,12 +4955,13 @@
     function cancelCalendarEdit() { closeCalendarDialog(); }
     function submitCalendarDialog() { if (calendarEditingId) saveCalendarEdit(); else addCalendarEvent(); }
     function saveCalendarEdit() {
-      if (!calendarEditingId || currentRole !== 'Master' && !hasPermission('kalender','edit')) return;
+      if (!calendarEditingId) return;
       const ev = appState.kalender.find(x => x.id === calendarEditingId);
       const data = calendarFormData();
-      if (!ev || !data) return;
+      if (!ev || !data || !canChangeEntry('kalender','edit',ev)) return;
       const pair = !!ev.groupId && document.getElementById('cal-edit-pair').checked;
       const targets = pair ? appState.kalender.filter(x => x.groupId === ev.groupId) : [ev];
+      if (!targets.every(x => canChangeEntry('kalender','edit',x))) { showToast('Keine Berechtigung für alle verknüpften Termine.', 'error'); return; }
       targets.forEach(x => {
         x.title=data.title; x.date=data.date; x.time=data.time; x.endDate=data.endDate; x.endTime=data.endTime; x.reminderMinutes=data.reminderMinutes; x.lastEditedBy=currentRole;
         if (x.owner === 'Daisy' && currentRole === 'Master' && !x.confirmed && x.id === ev.id) { x.pointsPlus=data.pointsPlus; x.pointsMinus=data.pointsMinus; delete x.points; }
@@ -4973,11 +4985,12 @@
       persistState(); refreshAllUI(); showToast(amount ? 'Termin bestätigt. Punkte gebucht.' : 'Termin ohne Punkte bestätigt.');
     }
     function deleteCalendarEvent(id) {
-      if (!hasPermission('kalender', 'delete')) return;
       const ev = appState.kalender.find(e => e.id === id);
+      if (!canChangeEntry('kalender','delete',ev)) return;
       if (!ev) return;
       const pair = !!ev.groupId && confirm('Auch den verknüpften Termin löschen?\nOK = beide, Abbrechen = nur diesen Termin');
       const ids = appState.kalender.filter(e => e.id === id || pair && e.groupId === ev.groupId).map(e => e.id);
+      if (!appState.kalender.filter(e => ids.includes(e.id)).every(e => canChangeEntry('kalender','delete',e))) { showToast('Keine Löschberechtigung für alle Termine.', 'error'); return; }
       if (!confirm('Wirklich ' + ids.length + ' Termin(e) löschen? Bereits gebuchte Punkte bleiben in der Historie.')) return;
       appState.kalender = appState.kalender.filter(e => !ids.includes(e.id));
       logActivity('hat Termin gelöscht: „' + ev.title + '“', 'kalender');
@@ -4998,7 +5011,7 @@
 
       list.innerHTML = appState.einkauf.map(item => `
         <div id="item-${item.id}" class="p-3 rounded-xl bg-white/[0.03] border border-slate-800 flex items-center justify-between gap-3">
-          <div onclick="${canEdit ? `toggleShoppingItem('${item.id}')` : ''}" class="flex items-center gap-3 flex-1 ${canEdit ? 'cursor-pointer' : ''}">
+          <div onclick="${canChangeEntry('einkauf','edit',item) ? `toggleShoppingItem('${item.id}')` : ''}" class="flex items-center gap-3 flex-1 ${canChangeEntry('einkauf','edit',item) ? 'cursor-pointer' : ''}">
             <div class="w-5 h-5 rounded-md border flex items-center justify-center text-xs ${
               item.done ? 'bg-emerald-500 border-emerald-500 text-black font-bold' : 'border-slate-500'
             }">
@@ -5009,7 +5022,7 @@
               ${item.note ? `<div class="text-[11px] text-slate-400">${escapeHtml(item.note)}</div>` : ''}
             </div>
           </div>
-          ${canDelete ? `<button onclick="deleteShoppingItem('${item.id}')" class="p-2 rounded-lg bg-rose-500/10 hover:bg-rose-500/25 text-rose-400 text-xs">🗑️</button>` : ''}
+          ${canChangeEntry('einkauf','delete',item) ? `<button onclick="deleteShoppingItem('${item.id}')" class="p-2 rounded-lg bg-rose-500/10 hover:bg-rose-500/25 text-rose-400 text-xs">🗑️</button>` : ''}
         </div>
       `).join('');
     }
@@ -5031,9 +5044,8 @@
     }
 
     function toggleShoppingItem(id) {
-      if (!hasPermission('einkauf', 'edit')) return;
       const item = appState.einkauf.find(i => i.id === id);
-      if (!item) return;
+      if (!item || !canChangeEntry(catId, 'edit', item)) return;
       item.done = !item.done;
       item.lastEditedBy = currentRole;
       logActivity(`hat Einkaufsartikel ${item.done ? 'abgehakt' : 'wieder geöffnet'}: „${item.name}“`, 'einkauf', null, item.id);
@@ -5042,8 +5054,8 @@
     }
 
     function deleteShoppingItem(id) {
-      if (!hasPermission('einkauf', 'delete')) return;
       const item = appState.einkauf.find(i => i.id === id);
+      if (!canChangeEntry('einkauf', 'delete', item)) return;
       appState.einkauf = appState.einkauf.filter(i => i.id !== id);
       if (item) logActivity(`hat Einkaufsartikel gelöscht: „${item.name}“`, 'einkauf');
       persistState();
@@ -5055,6 +5067,8 @@
         showToast('Keine Löschberechtigung.', 'error');
         return;
       }
+      const completed = appState.einkauf.filter(i => i.done);
+      if (!completed.every(i => canChangeEntry('einkauf','delete',i))) { showToast('Keine Löschberechtigung für alle erledigten Artikel.', 'error'); return; }
       appState.einkauf = appState.einkauf.filter(i => !i.done);
       logActivity('hat erledigte Einkaufsartikel bereinigt', 'einkauf');
       persistState();
@@ -5086,8 +5100,8 @@
             ${entry.redemptionId && entry.completedAt ? `<p class="text-xs text-slate-400 mt-1">Eingelöst: ${new Date(entry.createdAt).toLocaleDateString('de-DE')} · Erfüllt: ${new Date(entry.completedAt).toLocaleDateString('de-DE')}</p>` : ''}
           </div>
           <div class="flex items-center gap-1.5">
-            ${canEdit ? `<button onclick="togglePenaltyResolved('${entry.id}')" class="px-2.5 py-1.5 rounded-lg bg-white/5 hover:bg-white/10 text-xs text-slate-200">${entry.resolved ? 'Öffnen' : '✓ Erledigt'}</button>` : ''}
-            ${canDelete ? `<button onclick="deletePenaltyEntry('${entry.id}')" class="p-2 rounded-lg bg-rose-500/10 hover:bg-rose-500/25 text-rose-400 text-xs">🗑️</button>` : ''}
+            ${canChangeEntry('strafbuch','edit',entry) ? `<button onclick="togglePenaltyResolved('${entry.id}')" class="px-2.5 py-1.5 rounded-lg bg-white/5 hover:bg-white/10 text-xs text-slate-200">${entry.resolved ? 'Öffnen' : '✓ Erledigt'}</button>` : ''}
+            ${canChangeEntry('strafbuch','delete',entry) ? `<button onclick="deletePenaltyEntry('${entry.id}')" class="p-2 rounded-lg bg-rose-500/10 hover:bg-rose-500/25 text-rose-400 text-xs">🗑️</button>` : ''}
           </div>
         </div>
       `).join('');
@@ -5110,9 +5124,8 @@
     }
 
     function togglePenaltyResolved(id) {
-      if (!hasPermission('strafbuch', 'edit')) return;
       const entry = appState.strafbuch.find(p => p.id === id);
-      if (!entry) return;
+      if (!entry || !canChangeEntry('strafbuch', 'edit', entry)) return;
       entry.resolved = !entry.resolved;
       entry.lastEditedBy = currentRole;
       logActivity(`hat Strafbuch-Eintrag als ${entry.resolved ? 'erledigt' : 'offen'} markiert: „${entry.reason}“`, 'strafbuch', null, entry.id);
@@ -5121,8 +5134,8 @@
     }
 
     function deletePenaltyEntry(id) {
-      if (!hasPermission('strafbuch', 'delete')) return;
       const entry = appState.strafbuch.find(p => p.id === id);
+      if (!canChangeEntry('strafbuch', 'delete', entry)) return;
       appState.strafbuch = appState.strafbuch.filter(p => p.id !== id);
       if (entry) logActivity(`hat Strafbuch-Eintrag gelöscht: „${entry.reason}“`, 'strafbuch');
       persistState();
@@ -5374,7 +5387,7 @@
       if (new Date(deadline).getTime() <= Date.now()) return showToast('Deadline muss in der Zukunft liegen.', 'error');
       const tasks = appState.mgmt.aufgaben;
       const task = editingTaskId ? tasks.find(t => t.id === editingTaskId) : null;
-      if (editingTaskId && (!task || currentRole !== 'Master' || task.status !== 'open')) return;
+      if (editingTaskId && (!task || task.status !== 'open' || !canChangeEntry('aufgaben','edit',task))) return;
       const values = { title, desc, assignee, deadline, reminderMinutes, taskKind: kind, plusPoints: kind === 'reward' ? rewardAmount(document.getElementById('task-plus').value) : 0, minusPoints: kind === 'reward' ? rewardAmount(document.getElementById('task-minus').value) : 0 };
       if (task) {
         Object.assign(task, values);
@@ -5462,9 +5475,8 @@
       }
     }
     function editTask(id) {
-      if (currentRole !== 'Master') return;
       const t = appState.mgmt.aufgaben.find(t => t.id === id);
-      if (!t || t.status !== 'open') return;
+      if (!t || t.status !== 'open' || !canChangeEntry('aufgaben','edit',t)) return;
       editingTaskId = id;
       document.getElementById('task-title').value = t.title;
       document.getElementById('task-desc').value = t.desc || '';
@@ -5545,7 +5557,7 @@
         const reviewButtons = !personal && currentRole === 'Master' && t.assignee === 'Daisy' && ['review','overdue'].includes(status)
           ? ['accept','reject','extend'].map((d,i) => '<button onclick="reviewTask(\'' + t.id + '\',\'' + d + '\')" class="px-3 py-1 rounded-lg bg-white/10">' + ['Erfüllt','Nicht erfüllt','Frist verlängern'][i] + '</button>').join('')
           : '';
-        const edit = currentRole === 'Master' && status === 'open' ? '<button onclick="editTask(\'' + t.id + '\')" class="px-3 py-1 rounded-lg bg-white/10">Bearbeiten</button>' : '';
+        const edit = canChangeEntry('aufgaben','edit',t) && status === 'open' ? '<button onclick="editTask(\'' + t.id + '\')" class="px-3 py-1 rounded-lg bg-white/10">Bearbeiten</button>' : '';
         return '<div class="rounded-xl border ' + style[2] + ' bg-white/[0.03] p-3 space-y-2"><div class="flex flex-wrap justify-between gap-2"><strong class="text-sm">' + escapeHtml(t.title) + '</strong>' + badgeMark("aufgaben",t.id) + '<span class="text-xs ' + style[1] + '">' + style[0] + '</span></div><p class="text-xs text-slate-400">' + escapeHtml(t.desc || '') + '</p><div class="text-xs text-slate-400">Für: ' + escapeHtml(getDisplayName(t.assignee || 'Master')) + ' · Frist: ' + (t.deadline ? new Date(t.deadline).toLocaleString('de-DE') : 'Keine (Altbestand)') + '</div>' + (t.assignee === 'Daisy' ? '<div class="text-xs text-slate-400">+' + rewardAmount(t.plusPoints) + ' / −' + rewardAmount(t.minusPoints) + ' Punkte pro Fristversäumnis</div>' : '') + (t.reportedAt ? '<div class="text-xs text-amber-300">Gemeldet: ' + new Date(t.reportedAt).toLocaleString('de-DE') + '</div>' : '') + '<div class="flex flex-wrap gap-2 text-xs">' + buttons + reviewButtons + edit + '</div></div>';
       }).join('') || '<p class="text-xs text-slate-400">Noch keine Aufgaben vorhanden.</p>';
     }
@@ -6033,7 +6045,7 @@
       const canAdd = hasPermission(activeMgmtCategory, 'add');
       const ideasButton = document.getElementById('mgmt-ideas-button');
       if (ideasButton) ideasButton.classList.toggle('hidden', !['belohnungen','strafen'].includes(activeMgmtCategory) || (!canAdd && !(mgmtEditingItemId && hasPermission(activeMgmtCategory,'edit'))));
-      const canEdit = hasPermission(activeMgmtCategory, 'edit');
+      const canEdit = currentRole === 'Master' || ['editOwn','editOthers'].some(key => !!(appState.permissions?.[activeMgmtCategory]?.[key] ?? appState.permissions?.[activeMgmtCategory]?.edit));
       const canDelete = hasPermission(activeMgmtCategory, 'delete');
       const isEditing = !!mgmtEditingItemId;
       document.getElementById('mgmt-add-box').classList.toggle('hidden', !canAdd && !(isEditing && canEdit));
@@ -6076,8 +6088,8 @@
             ${rewardImage(item,activeMgmtCategory) ? `<img src="${escapeHtml(rewardImage(item,activeMgmtCategory))}" alt="${escapeHtml(item.title)}" class="rounded-xl max-h-56 w-auto mt-2 border border-slate-700" />` : ''}
           </div>
           <div class="flex items-center gap-1.5 shrink-0">
-            ${canEdit ? `<button onclick="editMgmtItem('${activeMgmtCategory}', '${item.id}')" class="p-2 rounded-lg bg-amber-500/10 hover:bg-amber-500/25 text-amber-300 text-xs" title="Bearbeiten">✏️</button>` : ''}
-            ${canDelete ? `<button onclick="deleteMgmtItem('${activeMgmtCategory}', '${item.id}')" class="p-2 rounded-lg bg-rose-500/10 hover:bg-rose-500/25 text-rose-400 text-xs" title="Löschen">🗑️</button>` : ''}
+            ${canChangeEntry(activeMgmtCategory, 'edit', item) ? `<button onclick="editMgmtItem('${activeMgmtCategory}', '${item.id}')" class="p-2 rounded-lg bg-amber-500/10 hover:bg-amber-500/25 text-amber-300 text-xs" title="Bearbeiten">✏️</button>` : ''}
+            ${canChangeEntry(activeMgmtCategory, 'delete', item) ? `<button onclick="deleteMgmtItem('${activeMgmtCategory}', '${item.id}')" class="p-2 rounded-lg bg-rose-500/10 hover:bg-rose-500/25 text-rose-400 text-xs" title="Löschen">🗑️</button>` : ''}
           </div>
         </div>
       `).join('');
@@ -6090,9 +6102,9 @@
     }
 
     function editMgmtItem(catId, itemId) {
-      if (catId !== activeMgmtCategory || !hasPermission(catId, 'edit')) return;
+      if (catId !== activeMgmtCategory) return;
       const item = (appState.mgmt[catId] || []).find(entry => entry.id === itemId);
-      if (!item) return;
+      if (!item || !canChangeEntry(catId, 'edit', item)) return;
       mgmtEditingItemId = itemId; mgmtDraftImage = null; mgmtDraftGalleryId = item.galleryImageId || null; mgmtImageRemoved = false;
       document.getElementById('mgmt-title').value = item.title || '';
       document.getElementById('mgmt-desc').value = item.desc || '';
@@ -6123,9 +6135,10 @@
 
     function saveMgmtEdit() {
       const catId = activeMgmtCategory;
-      if (!mgmtEditingItemId || !hasPermission(catId, 'edit')) return;
+      if (!mgmtEditingItemId) return;
       const item = (appState.mgmt[catId] || []).find(entry => entry.id === mgmtEditingItemId);
       if (!item) { cancelMgmtEdit(); return; }
+      if (!canChangeEntry(catId, 'edit', item)) { showToast('Keine Bearbeitungsberechtigung für diesen Eintrag.', 'error'); return; }
       const title = document.getElementById('mgmt-title').value.trim();
       const desc = document.getElementById('mgmt-desc').value.trim();
       if (!title) { showToast('Bitte eine Bezeichnung eingeben.', 'error'); return; }
@@ -6159,7 +6172,7 @@
       const prefix = MGMT_NUMBER_PREFIXES[activeMgmtCategory];
       const next = (appState.mgmtCounters[activeMgmtCategory] || 0) + 1;
       appState.mgmtCounters[activeMgmtCategory] = next;
-      const newItem = { id: 'mgmt-' + Date.now() + '-' + Math.random().toString(36).slice(2, 7), itemNumber: prefix + '-' + String(next).padStart(4, '0'), title, desc, done: false };
+      const newItem = { id: 'mgmt-' + Date.now() + '-' + Math.random().toString(36).slice(2, 7), itemNumber: prefix + '-' + String(next).padStart(4, '0'), title, desc, done: false, createdBy: currentRole };
       if (['belohnungen','strafen'].includes(activeMgmtCategory)) newItem.rewardPoints = rewardAmount(document.getElementById('mgmt-points').value);
       if (['kleidung','toys','belohnungen','strafen'].includes(activeMgmtCategory) && mgmtDraftImage) newItem.imgUrl = mgmtDraftImage;
       if (['belohnungen','strafen'].includes(activeMgmtCategory) && !mgmtDraftImage)
@@ -6182,9 +6195,8 @@
     }
 
     function toggleMgmtDone(catId, itemId) {
-      if (!hasPermission(catId, 'edit')) return;
       const item = (appState.mgmt[catId] || []).find(i => i.id === itemId);
-      if (!item) return;
+      if (!item || !canChangeEntry('einkauf', 'edit', item)) return;
       item.done = !item.done;
       logActivity(`hat Aufgabe ${item.done ? 'erledigt' : 'geöffnet'}: „${item.title}“`, 'verwaltung', catId, item.id);
       persistState();
@@ -6192,9 +6204,9 @@
     }
 
     function deleteMgmtItem(catId, itemId) {
-      if (!hasPermission(catId, 'delete')) return;
       const catObj = MGMT_CATEGORIES.find(c => c.id === catId);
       const item = (appState.mgmt[catId] || []).find(i => i.id === itemId);
+      if (!canChangeEntry(catId, 'delete', item)) return;
       appState.mgmt[catId] = (appState.mgmt[catId] || []).filter(i => i.id !== itemId);
       if (item) {
         logActivity(`hat ${catObj ? catObj.singular : 'Eintrag'} gelöscht: „${item.title}“`, 'verwaltung', catId);
@@ -6488,9 +6500,9 @@
         return `
           <tr class="hover:bg-white/[0.02]">
             <td class="p-3.5 font-medium text-slate-200">${cat.label}</td>
-            ${['visible', 'add', 'edit', 'delete'].map(action => `
+            ${['visible', 'add', 'editOwn', 'editOthers', 'deleteOwn', 'deleteOthers'].map(action => `
               <td class="p-3.5 text-center">
-                <input type="checkbox" ${p[action] ? 'checked' : ''}
+                <input type="checkbox" ${(typeof p[action] === 'boolean' ? p[action] : p[action.startsWith('edit') ? 'edit' : action.startsWith('delete') ? 'delete' : action]) ? 'checked' : ''}
                        onchange="updateCategoryPermission('${cat.id}', '${action}', this.checked)"
                        class="w-4 h-4 accent-[#c9973e] rounded cursor-pointer" />
               </td>
@@ -6514,6 +6526,7 @@
       if (!appState.permissions[catId]) {
         appState.permissions[catId] = { visible: true, add: false, edit: false, delete: false };
       }
+      if (!['visible','add','editOwn','editOthers','deleteOwn','deleteOthers'].includes(action)) return;
       appState.permissions[catId][action] = value;
       persistState();
       refreshAllUI();
