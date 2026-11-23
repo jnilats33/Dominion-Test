@@ -6041,7 +6041,9 @@
         a.category === activeMgmtCategory &&
         ['approved','rejected'].includes(a.status) &&
         (currentRole === 'Master' || a.item?.createdBy === currentRole));
-      panel.classList.toggle('hidden', !applications.length && !history.length);
+      const requestsOpen = panel.querySelector('[data-str-section="requests"]')?.open ?? true;
+      const historyOpen = panel.querySelector('details')?.open ?? false;
+      panel.classList.toggle('hidden', activeMgmtCategory !== 'strafen' && !applications.length && !history.length);
       const labels = {pending:'Zur Prüfung',revision:'Nachbesserung erforderlich',rejected:'Abgelehnt',approved:'Freigegeben'};
       panel.innerHTML = (applications.length ? '<h3 class="font-semibold text-amber-300">Anträge zur Bearbeitung</h3>' : '') + applications.map(a => {
         const actions = currentRole === 'Master' && a.status === 'pending'
@@ -6059,6 +6061,44 @@
               (a.comment ? '<p class="mt-2 whitespace-pre-wrap break-words"><strong>Begründung:</strong> ' + escapeHtml(a.comment) + '</p>' : '<p class="text-xs text-slate-400 mt-2">Keine Begründung hinterlegt.</p>') +
               '</div>';
           }).join('') + '</div></details>' : '');
+      if (activeMgmtCategory === 'strafen') {
+        // Keep the existing request cards and actions intact; group only their DOM nodes.
+        const requestSection = document.createElement('details');
+        requestSection.dataset.strSection = 'requests';
+        requestSection.className = 'rounded-xl border border-amber-800/50 p-3';
+        requestSection.open = requestsOpen;
+        const heading = document.createElement('summary');
+        heading.className = 'cursor-pointer font-semibold text-amber-300';
+        heading.textContent = 'Anträge zur Bearbeitung (' + applications.length + ')';
+        requestSection.appendChild(heading);
+        const requestContent = document.createElement('div');
+        requestContent.className = 'space-y-3 mt-3';
+        const historySection = panel.querySelector('details');
+        while (panel.firstChild && panel.firstChild !== historySection) {
+          const node = panel.firstChild;
+          if (node.nodeType === 1 && node.tagName === 'H3') { node.remove(); continue; }
+          requestContent.appendChild(node);
+        }
+        if (!applications.length) requestContent.innerHTML = '<p class="text-xs text-slate-400">Keine offenen Anträge.</p>';
+        requestSection.appendChild(requestContent);
+        panel.prepend(requestSection);
+        if (historySection) {
+          historySection.open = historyOpen;
+          historySection.className = 'rounded-xl border border-slate-700 p-3';
+        } else {
+          const emptyHistory = document.createElement('details');
+          emptyHistory.className = 'rounded-xl border border-slate-700 p-3';
+          const summary = document.createElement('summary');
+          summary.className = 'cursor-pointer font-semibold text-amber-300';
+          summary.textContent = 'Antragsverlauf (0)';
+          emptyHistory.append(summary);
+          const empty = document.createElement('p');
+          empty.className = 'text-xs text-slate-400 mt-3';
+          empty.textContent = 'Noch keine abgeschlossenen Anträge.';
+          emptyHistory.append(empty);
+          panel.append(emptyHistory);
+        }
+      }
     }
     function editMgmtApplication(id) {
       if (currentRole !== 'Master') return;
@@ -6330,9 +6370,27 @@
       const items = appState.mgmt[activeMgmtCategory] || [];
       const listEl = document.getElementById('mgmt-items-list');
       const rewardCategory = ['belohnungen', 'strafen'].includes(activeMgmtCategory);
+      const catalogOpen = listEl.querySelector('[data-str-section="catalog"]')?.open ?? false;
+      const wrapCatalog = () => {
+        if (activeMgmtCategory !== 'strafen') return;
+        const section = document.createElement('details');
+        section.dataset.strSection = 'catalog';
+        section.className = 'rounded-xl border border-slate-700 p-3';
+        section.open = catalogOpen;
+        const summary = document.createElement('summary');
+        summary.className = 'cursor-pointer font-semibold text-amber-300';
+        summary.textContent = 'Strafenkatalog (' + items.length + ')';
+        section.appendChild(summary);
+        const content = document.createElement('div');
+        content.className = 'space-y-2.5 mt-3';
+        while (listEl.firstChild) content.appendChild(listEl.firstChild);
+        section.appendChild(content);
+        listEl.appendChild(section);
+      };
 
       if (items.length === 0) {
         listEl.innerHTML = `<p class="text-xs text-slate-500 text-center py-6">Noch keine Einträge in dieser Kategorie.</p>`;
+        wrapCatalog();
         return;
       }
 
@@ -6359,6 +6417,7 @@
           </div>
         </div>
       `).join('');
+      wrapCatalog();
     }
 
     function selectMgmtCategory(catId) {
