@@ -251,34 +251,22 @@ exports.notifyTestPenalty = onValueWritten({
   }
 });
 exports.notifyTestTaskReview = onValueWritten({
-  ref:`/rooms/${ROOM}`,instance:'dominionapp-45bfa-default-rtdb',
+  ref:`/rooms/${ROOM}/mgmt/aufgaben`,instance:'dominionapp-45bfa-default-rtdb',
   region:REGION,maxInstances:2,retry:false
 },async event=>{
-  const before=event.data.before.val() || {}, after=event.data.after.val() || {};
-  const oldTasks=before.mgmt?.aufgaben, tasks=after.mgmt?.aufgaben;
-  const oldById=new Map((Array.isArray(oldTasks)?oldTasks:[]).filter(x=>x?.id).map(x=>[x.id,x]));
-  const newById=new Map((Array.isArray(tasks)?tasks:[]).filter(x=>x?.id).map(x=>[x.id,x]));
-  for(const entry of newEntries(before.activityFeed,after.activityFeed)){
-    if(!entry.id.startsWith('task-close-') || entry.actorRole!=='Master' || entry.targetTab!=='aufgaben' && !(entry.targetTab==='verwaltung' && entry.targetSubCategory==='aufgaben'))continue;
-    const id=entry.id.slice('task-close-'.length).replace(/-\d+$/,'');
-    const old=oldById.get(id), item=newById.get(id);
-    if(!old || old.assignee!=='Daisy')continue;
-    let body, preferenceKey;
-    if(!item && entry.action?.startsWith('Aufgabe zurückgezogen:')){body='Eine Aufgabe wurde zurückgezogen.'; preferenceKey='taskWithdrawn';}
-    else if(item?.closedAt===entry.timestamp && item.lastEditedBy==='Master'){
-      preferenceKey=['done','rejected'].includes(old.status)?'taskCorrected':item.status==='done'?'taskDone':'taskRejected';
-      body=['done','rejected'].includes(old.status)?'Ein Aufgabenabschluss wurde korrigiert.':
-        item.status==='done'?'Eine Aufgabe wurde als erledigt abgeschlossen.':
-        item.status==='rejected'?'Eine Aufgabe wurde als nicht erledigt abgeschlossen.':null;
+  for(const {old,item} of changedRows(event.data.before.val(),event.data.after.val()).slice(0,20)){
+    if(!old)continue;
+    if(item.assignee==='Daisy' && item.lastEditedBy==='Master' && item.closedAt && old.closedAt!==item.closedAt && ['done','rejected'].includes(item.status)){
+      const corrected=['done','rejected'].includes(old.status);
+      await notifyOtherRole('Master','Daisy','Aufgabenabschluss',
+        corrected?'Ein Aufgabenabschluss wurde korrigiert.':item.status==='done'?'Eine Aufgabe wurde als erledigt abgeschlossen.':'Eine Aufgabe wurde als nicht erledigt abgeschlossen.',
+        'task-review',corrected?'taskCorrected':item.status==='done'?'taskDone':'taskRejected');
+      continue;
     }
-    if(body)await notifyOtherRole('Master','Daisy','Aufgabenabschluss',body,'task-review',preferenceKey);
-  }
-  for(const {old,item} of changedRows(oldTasks,tasks).slice(0,20)){
-    if(!old || old.status===item.status || (item.closedAt && old.closedAt!==item.closedAt))continue;
+    if(old.status===item.status)continue;
     const actor=item.lastEditedBy;
     if(!ROLES.has(actor) || !['review','done','rejected','open'].includes(item.status))continue;
-    await notifyOtherRole(actor,otherRole(actor),'Aufgabenstatus',
-      'Status einer Aufgabe geändert','task-review','taskReview');
+    await notifyOtherRole(actor,otherRole(actor),'Aufgabenstatus','Status einer Aufgabe geändert','task-review','taskReview');
   }
 });
 exports.notifyTestRewards = onValueWritten({
