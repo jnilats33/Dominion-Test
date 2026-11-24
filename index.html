@@ -1879,7 +1879,9 @@
         const ids = rawTasks.map(t => t?.id);
         const rawNumbers = rawTasks.map(t => t?.itemNumber || '(ohne Nummer)');
         const numberedNumbers = numberedTasks.map(t => t?.itemNumber || '(ohne Nummer)');
-        const expected = numberedTasks.map((_, i) => 'A-' + String(i + 1).padStart(4, '0'));
+        const counter = Number(raw.mgmtCounters?.aufgaben);
+        const numeric = rawNumbers.map(n=>/^A-[0-9]+$/.test(n)?Number(n.slice(2)):NaN);
+        const consistent = Number.isSafeInteger(counter) && counter >= 0 && numeric.every(n=>Number.isSafeInteger(n) && n>0 && n<=counter) && new Set(numeric).size===numeric.length && new Set(ids).size===ids.length && ids.every(Boolean);
         const report = [
           'TEST – Aufgabenzähler prüfen (NUR LESEN)',
           'Serveraufgaben: ' + rawTasks.length,
@@ -1888,8 +1890,8 @@
           'Aufgaben-IDs eindeutig: ' + (new Set(ids).size === ids.length && ids.every(Boolean)),
           'Rohe Nummern: ' + rawNumbers.join(', '),
           'Normalisierte Nummern: ' + numberedNumbers.join(', '),
-          'Normalisierte Nummern vollständig A-0001 bis A-' + String(numberedTasks.length).padStart(4, '0') +
-            ': ' + (numberedNumbers.slice().sort().join('|') === expected.sort().join('|')),
+          'Nummern und Zähler konsistent (Lücken zulässig): ' + consistent,
+          'Nächste Nummer: ' + (consistent ? 'A-'+String(counter+1).padStart(4,'0') : '(gesperrt)'),
           'Konfliktsperre: ' + (productionSyncConflict ? 'aktiv' : 'inaktiv'),
           'KEINE DATEN GESCHRIEBEN.'
         ].join('\n');
@@ -5745,7 +5747,9 @@
         if (new Set(ids).size !== ids.length || ids.some(id=>!id) ||
             new Set(numbers).size !== numbers.length ||
             numbers.some(n=>typeof n !== 'string' || !/^A-[0-9]+$/.test(n)) ||
-            Math.max(0,...numbers.map(n=>Number(n.slice(2)))) !== counter)
+            numbers.some(n=>!Number.isSafeInteger(Number(n.slice(2))) || Number(n.slice(2)) < 1 || Number(n.slice(2)) > counter) ||
+            new Set(numbers.map(n=>Number(n.slice(2)))).size !== numbers.length ||
+            !Number.isSafeInteger(counter+1))
           throw new Error('Aufgabennummern und Zähler sind nicht konsistent.');
         const newNumber = 'A-' + String(counter+1).padStart(4,'0');
         const newTask = {id:taskId,itemNumber:newNumber,taskV26:true,status:'open',
