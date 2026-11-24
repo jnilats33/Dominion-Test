@@ -5838,6 +5838,11 @@
         <p class="text-xs text-slate-300" data-summary></p>
         <div class="flex justify-end gap-2"><button data-cancel class="px-3 py-2 rounded-lg bg-white/10">Abbrechen</button><button data-submit class="px-3 py-2 rounded-lg gold-gradient text-black">Abschluss bestätigen</button></div>
       </section>`;
+      if (['done','rejected'].includes(task.status)) {
+        dialog.querySelector('h2').textContent = 'Abschluss korrigieren';
+        dialog.querySelector('input[value="'+task.status+'"]').checked = true;
+        dialog.querySelector('textarea').value = task.closureComment || '';
+      }
       dialog.querySelector('p').textContent = (task.number || '') + ' · ' + task.title;
       const choice = () => dialog.querySelector('input:checked').value;
       const summary = () => { dialog.querySelector('[data-summary]').textContent = ({done:'Belohnungspunkte werden gebucht. Bisherige Minuspunkte bleiben erhalten.',rejected:'Keine Belohnungspunkte und keine neuen Minuspunkte. Bisherige Minuspunkte bleiben erhalten.',withdraw:'Aufgabe entfernen und sämtliche zugehörigen Punktebuchungen rückgängig machen.'})[choice()]; };
@@ -5936,13 +5941,13 @@
         const style = labels[status];
         const personal = t.taskKind === 'personal' || (t.assignee === 'Master' && t.taskKind !== 'reward');
         const buttons = personal
-          ? ((currentRole === 'Daisy' && t.assignee === 'Daisy') && status !== 'done' ? '<button onclick="completeMasterTask(\'' + t.id + '\')" class="px-3 py-1 rounded-lg bg-emerald-900/40 text-emerald-200">Erledigt</button>' : '')
+          ? ((currentRole === 'Daisy' && t.assignee === 'Daisy') && !['done','rejected'].includes(status) ? '<button onclick="completeMasterTask(\'' + t.id + '\')" class="px-3 py-1 rounded-lg bg-emerald-900/40 text-emerald-200">Erledigt</button>' : '')
           : (currentRole === 'Daisy' && ['open','overdue'].includes(status) ? '<button onclick="reportTask(\'' + t.id + '\')" class="px-3 py-1 rounded-lg bg-amber-900/40 text-amber-200">Erledigt melden</button>' : '');
         const reviewButtons = !personal && currentRole === 'Master' && t.assignee === 'Daisy' && ['review','overdue'].includes(status)
           ? ['extend'].map((d,i) => '<button onclick="reviewTask(\'' + t.id + '\',\'' + d + '\')" class="px-3 py-1 rounded-lg bg-white/10">' + ['Frist verlängern'][i] + '</button>').join('')
           : '';
         const edit = canChangeEntry('aufgaben','edit',t) && status === 'open' ? '<button onclick="editTask(\'' + t.id + '\')" class="px-3 py-1 rounded-lg bg-white/10">Bearbeiten</button>' : '';
-        return '<div class="rounded-xl border ' + style[2] + ' bg-white/[0.03] p-3 space-y-2"><div class="flex flex-wrap justify-between gap-2"><strong class="text-sm">' + escapeHtml(t.title) + '</strong>' + badgeMark("aufgaben",t.id) + '<span class="text-xs ' + style[1] + '">' + style[0] + '</span></div><p class="text-xs text-slate-400">' + escapeHtml(t.desc || '') + '</p><div class="text-xs text-slate-400">Für: ' + escapeHtml(getDisplayName(t.assignee || 'Master')) + ' · Frist: ' + (t.deadline ? new Date(t.deadline).toLocaleString('de-DE') : 'Keine (Altbestand)') + '</div>' + (t.assignee === 'Daisy' ? '<div class="text-xs text-slate-400">+' + rewardAmount(t.plusPoints) + ' / −' + rewardAmount(t.minusPoints) + ' Punkte pro Fristversäumnis</div>' : '') + (t.reportedAt ? '<div class="text-xs text-amber-300">Gemeldet: ' + new Date(t.reportedAt).toLocaleString('de-DE') + '</div>' : '') + (t.closureComment ? '<p class="text-xs text-amber-200">Kommentar zum Abschluss: ' + escapeHtml(t.closureComment) + '</p>' : '') + '<div class="flex flex-wrap gap-2 text-xs">' + buttons + reviewButtons + edit + (currentRole === 'Master' ? '<button onclick="openTaskClosure(\'' + t.id + '\')" class="px-3 py-1 rounded-lg bg-white/10">Aufgabe abschließen</button>' : '') + '</div></div>';
+        return '<div class="rounded-xl border ' + style[2] + ' bg-white/[0.03] p-3 space-y-2"><div class="flex flex-wrap justify-between gap-2"><strong class="text-sm">' + escapeHtml(t.title) + '</strong>' + badgeMark("aufgaben",t.id) + '<span class="text-xs ' + style[1] + '">' + style[0] + '</span></div><p class="text-xs text-slate-400">' + escapeHtml(t.desc || '') + '</p><div class="text-xs text-slate-400">Für: ' + escapeHtml(getDisplayName(t.assignee || 'Master')) + ' · Frist: ' + (t.deadline ? new Date(t.deadline).toLocaleString('de-DE') : 'Keine (Altbestand)') + '</div>' + (t.assignee === 'Daisy' ? '<div class="text-xs text-slate-400">+' + rewardAmount(t.plusPoints) + ' / −' + rewardAmount(t.minusPoints) + ' Punkte pro Fristversäumnis</div>' : '') + (t.reportedAt ? '<div class="text-xs text-amber-300">Gemeldet: ' + new Date(t.reportedAt).toLocaleString('de-DE') + '</div>' : '') + (t.closureComment ? '<p class="text-xs text-amber-200">Kommentar zum Abschluss: ' + escapeHtml(t.closureComment) + '</p>' : '') + '<div class="flex flex-wrap gap-2 text-xs">' + buttons + reviewButtons + edit + (currentRole === 'Master' ? '<button onclick="openTaskClosure(\'' + t.id + '\')" class="px-3 py-1 rounded-lg bg-white/10"' + (['done','rejected'].includes(status) ? ' title="Abschluss korrigieren" aria-label="Abschluss korrigieren">✎' : '>Aufgabe abschließen') + '</button>' : '') + '</div></div>';
       }).join('') || '<p class="text-xs text-slate-400">Noch keine Aufgaben vorhanden.</p>';
     }
     // Selection is local and provisional until an RTDB ledger transaction commits.
