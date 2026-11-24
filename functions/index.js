@@ -116,7 +116,7 @@ exports.notifyTestChatV2 = onValueCreated({
 
 
 
-const PUSH_EVENTS = new Set(['chat','task','taskReview','calendar','shopping','rewards','penalty']);
+const PUSH_EVENTS = new Set(['chat','task','taskReview','taskDone','taskRejected','taskWithdrawn','taskCorrected','calendar','shopping','rewards','penalty']);
 const PUSH_PREF_PATH = 'pushPreferences/' + ROOM;
 exports.getTestPushPreferences = onCall({region:REGION,maxInstances:2,enforceAppCheck:true},async request => {
   const role=verifiedRole(request);
@@ -259,18 +259,19 @@ exports.notifyTestTaskReview = onValueWritten({
   const oldById=new Map((Array.isArray(oldTasks)?oldTasks:[]).filter(x=>x?.id).map(x=>[x.id,x]));
   const newById=new Map((Array.isArray(tasks)?tasks:[]).filter(x=>x?.id).map(x=>[x.id,x]));
   for(const entry of newEntries(before.activityFeed,after.activityFeed)){
-    if(!entry.id.startsWith('task-close-') || entry.actorRole!=='Master' || entry.targetTab!=='aufgaben')continue;
+    if(!entry.id.startsWith('task-close-') || entry.actorRole!=='Master' || entry.targetTab!=='aufgaben' && !(entry.targetTab==='verwaltung' && entry.targetSubCategory==='aufgaben'))continue;
     const id=entry.id.slice('task-close-'.length).replace(/-\d+$/,'');
     const old=oldById.get(id), item=newById.get(id);
     if(!old || old.assignee!=='Daisy')continue;
-    let body;
-    if(!item && entry.action?.startsWith('Aufgabe zurückgezogen:'))body='Eine Aufgabe wurde zurückgezogen.';
+    let body, preferenceKey;
+    if(!item && entry.action?.startsWith('Aufgabe zurückgezogen:')){body='Eine Aufgabe wurde zurückgezogen.'; preferenceKey='taskWithdrawn';}
     else if(item?.closedAt===entry.timestamp && item.lastEditedBy==='Master'){
+      preferenceKey=['done','rejected'].includes(old.status)?'taskCorrected':item.status==='done'?'taskDone':'taskRejected';
       body=['done','rejected'].includes(old.status)?'Ein Aufgabenabschluss wurde korrigiert.':
         item.status==='done'?'Eine Aufgabe wurde als erledigt abgeschlossen.':
         item.status==='rejected'?'Eine Aufgabe wurde als nicht erledigt abgeschlossen.':null;
     }
-    if(body)await notifyOtherRole('Master','Daisy','Aufgabenabschluss',body,'task-review','taskReview');
+    if(body)await notifyOtherRole('Master','Daisy','Aufgabenabschluss',body,'task-review',preferenceKey);
   }
   for(const {old,item} of changedRows(oldTasks,tasks).slice(0,20)){
     if(!old || old.status===item.status || (item.closedAt && old.closedAt!==item.closedAt))continue;
