@@ -251,11 +251,29 @@ exports.notifyTestPenalty = onValueWritten({
   }
 });
 exports.notifyTestTaskReview = onValueWritten({
-  ref:`/rooms/${ROOM}/mgmt/aufgaben`,instance:'dominionapp-45bfa-default-rtdb',
+  ref:`/rooms/${ROOM}`,instance:'dominionapp-45bfa-default-rtdb',
   region:REGION,maxInstances:2,retry:false
 },async event=>{
-  for(const {old,item} of changedRows(event.data.before.val(),event.data.after.val()).slice(0,20)){
-    if(!old || old.status===item.status)continue;
+  const before=event.data.before.val() || {}, after=event.data.after.val() || {};
+  const oldTasks=before.mgmt?.aufgaben, tasks=after.mgmt?.aufgaben;
+  const oldById=new Map((Array.isArray(oldTasks)?oldTasks:[]).filter(x=>x?.id).map(x=>[x.id,x]));
+  const newById=new Map((Array.isArray(tasks)?tasks:[]).filter(x=>x?.id).map(x=>[x.id,x]));
+  for(const entry of newEntries(before.activityFeed,after.activityFeed)){
+    if(!entry.id.startsWith('task-close-') || entry.actorRole!=='Master' || entry.targetTab!=='aufgaben')continue;
+    const id=entry.id.slice('task-close-'.length).replace(/-\d+$/,'');
+    const old=oldById.get(id), item=newById.get(id);
+    if(!old || old.assignee!=='Daisy')continue;
+    let body;
+    if(!item && entry.action?.startsWith('Aufgabe zurückgezogen:'))body='Eine Aufgabe wurde zurückgezogen.';
+    else if(item?.closedAt===entry.timestamp && item.lastEditedBy==='Master'){
+      body=['done','rejected'].includes(old.status)?'Ein Aufgabenabschluss wurde korrigiert.':
+        item.status==='done'?'Eine Aufgabe wurde als erledigt abgeschlossen.':
+        item.status==='rejected'?'Eine Aufgabe wurde als nicht erledigt abgeschlossen.':null;
+    }
+    if(body)await notifyOtherRole('Master','Daisy','Aufgabenabschluss',body,'task-review','taskReview');
+  }
+  for(const {old,item} of changedRows(oldTasks,tasks).slice(0,20)){
+    if(!old || old.status===item.status || (item.closedAt && old.closedAt!==item.closedAt))continue;
     const actor=item.lastEditedBy;
     if(!ROLES.has(actor) || !['review','done','rejected','open'].includes(item.status))continue;
     await notifyOtherRole(actor,otherRole(actor),'Aufgabenstatus',
