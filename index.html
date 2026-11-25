@@ -2554,90 +2554,36 @@
             const draft = JSON.parse(localStorage.getItem(SYNC_CONFLICT_DRAFT_KEY) || 'null');
             if (!draft?.drafts || typeof draft.drafts !== 'object')
               throw new Error('Konfliktentwurf fehlt oder ist nicht lesbar.');
-            resolvePhase = 'Konfliktentwurf und Aufgabenbestand vergleichen';
+            resolvePhase = 'Aktuellen Serverbestand und Konfliktentwurf prüfen';
             resolveDiagnostic.textContent = 'Abschlussdiagnose: Prüfe … ' + resolvePhase;
             const fresh = mergeWithDefaults(sanitizeForFirebase(raw));
-            const localTasks = draft.drafts.mgmt?.aufgaben;
-            const remoteTasks = fresh.mgmt?.aufgaben;
-            const localTaskCount = Array.isArray(localTasks) ? localTasks.length : 'keine Liste';
-            const serverTaskCount = Array.isArray(remoteTasks) ? remoteTasks.length : 'keine Liste';
-            const serverTaskCounter = raw.mgmtCounters?.aufgaben ?? 'nicht vorhanden';
-            const localTaskCounter = draft.drafts.mgmtCounters?.aufgaben ?? 'nicht im Entwurf';
-            const serverNumbers = Array.isArray(remoteTasks)
-              ? remoteTasks.map(t => String(t?.itemNumber ?? '(ohne Nummer)')) : [];
-            const rawServerNumbers = Array.isArray(raw.mgmt?.aufgaben)
-              ? raw.mgmt.aufgaben.map(t => String(t?.itemNumber ?? '(ohne Nummer)')) : [];
-            const serverMaxNumber = serverNumbers.reduce((max, number) =>
-              /^A-\d+$/.test(number) ? Math.max(max, Number(number.slice(2))) : max, 0);
-            // The fifth task was recovered without an itemNumber; the existing
-            // numbering helper assigns A-0005 in memory. Accept this exact
-            // historical TEST state only; do not change the Firebase counter.
-            const knownRecoveredFifthTask =
-              Array.isArray(raw.mgmt?.aufgaben) &&
-              Array.isArray(remoteTasks) &&
-              raw.mgmt.aufgaben.length === 5 &&
-              Number(raw.mgmtCounters?.aufgaben) === 4 &&
-              raw.mgmt.aufgaben.filter(t => !t?.itemNumber).length === 1 &&
-              raw.mgmt.aufgaben.filter(t => t?.itemNumber)
-                .map(t => t.itemNumber).sort().join('|') ===
-                'A-0001|A-0002|A-0003|A-0004' &&
-              remoteTasks.map(t => t?.itemNumber).sort().join('|') ===
-                'A-0001|A-0002|A-0003|A-0004|A-0005';
-            if (!Array.isArray(localTasks) || !Array.isArray(remoteTasks) ||
-                localTasks.length < 5 || localTasks.length !== remoteTasks.length ||
-                (Number(raw.mgmtCounters?.aufgaben) !== remoteTasks.length &&
-                 !knownRecoveredFifthTask))
-              throw new Error('Aufgabenbestand oder Zähler nicht mehr wie geprüft. ' +
-                'Lokal: ' + localTaskCount + ', Server: ' + serverTaskCount +
-                ', Server-Zähler: ' + serverTaskCounter +
-                ', lokaler Entwurfszähler: ' + localTaskCounter +
-                ', höchste normalisierte Aufgabennummer: ' + serverMaxNumber +
-                ', Servernummern: ' + serverNumbers.join(', ') +
-                ', rohe Servernummern: ' + rawServerNumbers.join(', ') + '.');
-            const omitKnownEmpty = (value, context) => {
-              if (Array.isArray(value))
-                return value.map(v=>omitKnownEmpty(v,context));
-              if (!value || typeof value !== 'object') return value;
-              const copy={};
-              for (const [key,v] of Object.entries(value)) {
-                if (context==='task' && key==='history' && Array.isArray(v) && v.length===0) continue;
-                if (context==='task' && key==='reminderMinutes' && v===null) continue;
-                if (context==='activity' && (key==='targetSubCategory'||key==='targetItemId') && v===null) continue;
-                copy[key]=omitKnownEmpty(v,context);
-              }
-              return copy;
-            };
-            const compareTask = (a,b) => sameRemoteValue(
-              omitKnownEmpty(a,'task'),omitKnownEmpty(b,'task'));
-            const byId=new Map(remoteTasks.map(t=>[t.id,t]));
-            if (byId.size!==remoteTasks.length || localTasks.some(t=>!byId.has(t.id) ||
-                !compareTask(t,byId.get(t.id))))
-              throw new Error('Aufgaben unterscheiden sich weiterhin vom Server.');
-            const expectedNumbers=new Set(remoteTasks.map((_,i)=>'A-'+String(i+1).padStart(4,'0')));
-            if (remoteTasks.some(t=>!expectedNumbers.delete(t.itemNumber)) ||
-                expectedNumbers.size!==0)
-              throw new Error('Aufgabennummern nicht eindeutig oder lückenlos.');
-            resolvePhase = 'Aktivitätsverlauf vergleichen';
-            resolveDiagnostic.textContent = 'Abschlussdiagnose: Prüfe … ' + resolvePhase;
-            const localFeed=draft.drafts.activityFeed;
-            const remoteFeed=fresh.activityFeed;
-            if (!Array.isArray(localFeed) || !Array.isArray(remoteFeed) ||
-                localFeed.length!==remoteFeed.length ||
-                localFeed.some((v,i)=>!sameRemoteValue(
-                  omitKnownEmpty(v,'activity'),omitKnownEmpty(remoteFeed[i],'activity'))))
-              throw new Error('Aktivitätsverlauf unterscheidet sich vom Server.');
-            resolvePhase = 'Weitere Entwurfsdaten vergleichen';
-            resolveDiagnostic.textContent = 'Abschlussdiagnose: Prüfe … ' + resolvePhase;
-            const excluded=new Set(['chat','chatV2','firebase','fcmToken','version','mgmt','activityFeed']);
-            for (const [key,value] of Object.entries(draft.drafts)) {
-              if (excluded.has(key)) continue;
-              if (!sameRemoteValue(value,fresh[key]))
-                throw new Error('Abweichung in '+key+'. Konflikt bleibt gesperrt.');
+            const tasks = raw.mgmt.aufgaben || [];
+            if (!Array.isArray(tasks)) throw new Error('Server-Aufgabenbestand ist keine Liste.');
+            const ids = new Set(), numbers = new Set();
+            let maxNumber = 0;
+            for (const task of tasks) {
+              if (!task?.id || ids.has(task.id) || !/^A-\d+$/.test(task.itemNumber || ''))
+                throw new Error('Ungültige oder doppelte Aufgaben-ID bzw. Nummer.');
+              const n = Number(task.itemNumber.slice(2));
+              if (!Number.isSafeInteger(n) || n < 1 || numbers.has(n))
+                throw new Error('Ungültige oder doppelte Aufgabennummer.');
+              ids.add(task.id); numbers.add(n); maxNumber = Math.max(maxNumber,n);
             }
-            const categories=['kleidung','toys','strafen','belohnungen','regeln'];
-            if (categories.some(key=>!sameRemoteValue(
-              draft.drafts.mgmt?.[key],fresh.mgmt?.[key])))
-              throw new Error('Weitere Verwaltungskategorie weicht ab.');
+            const counter = Number(raw.mgmtCounters?.aufgaben ?? 0);
+            if (!Number.isSafeInteger(counter) || counter < maxNumber)
+              throw new Error('Server-Aufgabenzähler liegt unter der höchsten vorhandenen Nummer.');
+            const differences = [];
+            for (const [key,value] of Object.entries(draft.drafts)) {
+              if (['chat','chatV2','firebase','fcmToken','version'].includes(key)) continue;
+              if (!sameRemoteValue(value,fresh[key])) differences.push(key);
+            }
+            if (differences.length && !confirm('Abweichende lokale Entwurfsbereiche: '+differences.join(', ')+'.\nNur diese lokalen Änderungen werden verworfen; der aktuelle Serverstand bleibt unverändert. Fortfahren?'))
+              throw new Error('Lokales Verwerfen nicht bestätigt.');
+            if (pendingCollectionWrites.size || !productionSyncConflict)
+              throw new Error('Synchronisationszustand hat sich geändert.');
+            const verification = (await firebaseDbRef.once('value')).val();
+            if (!sameRemoteValue(raw,verification))
+              throw new Error('Serverstand hat sich während der Prüfung geändert. Bitte erneut versuchen.');
             resolvePhase = 'Geprüften Serverstand lokal übernehmen';
             resolveDiagnostic.textContent = 'Abschlussdiagnose: Prüfe … ' + resolvePhase;
             const { chat: ignoredChat, chatV2: ignoredChatV2, ...remote } = raw;
