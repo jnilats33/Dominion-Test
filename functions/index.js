@@ -139,7 +139,7 @@ async function notifyOtherRole(sender, recipient, title, body, kind, preferenceK
   if (!ROLES.has(sender) || !ROLES.has(recipient) || sender === recipient) return;
   if (!PUSH_EVENTS.has(preferenceKey)) return;
   const preference=await getDatabase().ref(PUSH_PREF_PATH+'/'+recipient+'/'+preferenceKey).get();
-  if (preference.val() === false) return;
+  if (preference.val() === false) { logger.info('test_push_preference_disabled',{recipient,preferenceKey}); return; }
   const snapshot = await getDatabase().ref(`pushDevices/${ROOM}/${recipient}`).get();
   const devices = Object.entries(snapshot.val() || {}).filter(([, value]) => typeof value?.token === 'string');
   if (!devices.length) return;
@@ -254,19 +254,24 @@ exports.notifyTestTaskReview = onValueWritten({
   ref:`/rooms/${ROOM}/mgmt/aufgaben`,instance:'dominionapp-45bfa-default-rtdb',
   region:REGION,maxInstances:2,retry:false
 },async event=>{
-  for(const {old,item} of changedRows(event.data.before.val(),event.data.after.val()).slice(0,20)){
+  for(const {old,item} of changedRows(event.data.before.val(),event.data.after.val())){
     if(!old)continue;
-    if(item.assignee==='Daisy' && item.lastEditedBy==='Master' && item.closedAt && old.closedAt!==item.closedAt && ['done','rejected'].includes(item.status)){
+    const actor=item.lastEditedBy;
+    const closed=['done','rejected'].includes(item.status);
+    if(closed){
+      if(actor!=='Master' || item.assignee!=='Daisy')continue;
+      if(old.status===item.status && old.closedAt===item.closedAt)continue;
       const corrected=['done','rejected'].includes(old.status);
+      const key=corrected?'taskCorrected':item.status==='done'?'taskDone':'taskRejected';
+      logger.info('test_task_push_classified',{preferenceKey:key});
       await notifyOtherRole('Master','Daisy','Aufgabenabschluss',
         corrected?'Ein Aufgabenabschluss wurde korrigiert.':item.status==='done'?'Eine Aufgabe wurde als erledigt abgeschlossen.':'Eine Aufgabe wurde als nicht erledigt abgeschlossen.',
-        'task-review',corrected?'taskCorrected':item.status==='done'?'taskDone':'taskRejected');
+        'task-review',key);
       continue;
     }
-    if(old.status===item.status)continue;
-    const actor=item.lastEditedBy;
-    if(!ROLES.has(actor) || !['review','done','rejected','open'].includes(item.status))continue;
-    await notifyOtherRole(actor,otherRole(actor),'Aufgabenstatus','Status einer Aufgabe geändert','task-review','taskReview');
+    if(old.status===item.status || actor!=='Daisy' || item.status!=='review')continue;
+    logger.info('test_task_push_classified',{preferenceKey:'taskReview'});
+    await notifyOtherRole('Daisy','Master','Aufgaben zur Prüfung','Eine Aufgabe wurde zur Prüfung gemeldet.','task-review','taskReview');
   }
 });
 exports.notifyTestRewards = onValueWritten({
