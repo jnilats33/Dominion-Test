@@ -254,7 +254,22 @@ exports.notifyTestTaskReview = onValueWritten({
   ref:`/rooms/${ROOM}/mgmt/aufgaben`,instance:'dominionapp-45bfa-default-rtdb',
   region:REGION,maxInstances:2,retry:false
 },async event=>{
-  for(const {old,item} of changedRows(event.data.before.val(),event.data.after.val())){
+  const before=event.data.before.val(), after=event.data.after.val();
+  const remaining=new Set((Array.isArray(after)?after:[]).filter(Boolean).map(t=>t.id));
+  const removed=(Array.isArray(before)?before:[]).filter(t=>t?.id && t.assignee==='Daisy' && !remaining.has(t.id));
+  if(removed.length){
+    const feed=(await getDatabase().ref(`rooms/${ROOM}/activityFeed`).get()).val();
+    const entries=Array.isArray(feed)?feed:[];
+    for(const task of removed){
+      const match=entries.find(e=>e?.eventType==='taskWithdrawn' && e.withdrawnTaskId===task.id &&
+        e.actorRole==='Master' && e.recipientRole==='Daisy' &&
+        typeof e.timestamp==='number' && Math.abs(Date.parse(event.time)-e.timestamp)<300000);
+      if(!match)continue;
+      logger.info('test_task_push_classified',{preferenceKey:'taskWithdrawn'});
+      await notifyOtherRole('Master','Daisy','Aufgabenabschluss','Eine Aufgabe wurde zurückgezogen.','task-review','taskWithdrawn');
+    }
+  }
+  for(const {old,item} of changedRows(before,after)){
     if(!old)continue;
     const actor=item.lastEditedBy;
     const closed=['done','rejected'].includes(item.status);
