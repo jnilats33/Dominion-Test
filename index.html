@@ -5147,6 +5147,9 @@
         return getEventOwnerRole(ev) === calFilterRole;
       });
 
+      const localToday = new Date();
+      const today = `${localToday.getFullYear()}-${String(localToday.getMonth()+1).padStart(2,'0')}-${String(localToday.getDate()).padStart(2,'0')}`;
+      const calendarTasks = (currentRole === 'Master' || hasPermission('aufgaben','visible')) ? (appState.mgmt.aufgaben || []).filter(t => t.deadline && Number.isFinite(Date.parse(t.deadline)) && !['done','rejected'].includes(taskStatus(t)) && (calFilterRole === 'all' || t.assignee === calFilterRole)) : [];
       // Render Visual Month Grid
       const monthNames = ['Januar', 'Februar', 'März', 'April', 'Mai', 'Juni', 'Juli', 'August', 'September', 'Oktober', 'November', 'Dezember'];
       const monthLabelEl = document.getElementById('cal-month-label');
@@ -5159,7 +5162,7 @@
         const firstDay = new Date(calViewYear, calViewMonth, 1);
         const startOffset = (firstDay.getDay() + 6) % 7; // Monday = 0
         const daysInMonth = new Date(calViewYear, calViewMonth + 1, 0).getDate();
-        const todayIso = new Date().toISOString().slice(0, 10);
+        const todayIso = today;
 
         let cellsHtml = '';
         for (let i = 0; i < startOffset; i++) {
@@ -5200,11 +5203,13 @@
             markersHtml += `</div>`;
           }
 
+          const taskMarkers = ['Master','Daisy'].map(role => { const count = calendarTasks.filter(t => t.assignee === role && t.deadline.slice(0,10) === iso).length; return count ? `<span class="rounded px-1 ${role === 'Master' ? 'bg-[#c9973e] text-black' : 'bg-rose-400 text-black'}" title="Aufgabenfrist">✓${count > 1 ? count : ''}</span>` : ''; }).join('');
           cellsHtml += `
             <button type="button" onclick="selectCalendarDate('${iso}')"
                     class="h-14 sm:h-16 p-1 rounded-xl border ${cellBorder} ${cellBg} flex flex-col justify-between text-left transition overflow-hidden">
               <span class="text-[11px] font-semibold ${isToday ? 'text-[#e5b55c]' : 'text-slate-300'}">${day}</span>
               ${markersHtml}
+              ${taskMarkers ? `<div class="flex gap-1 text-[10px]">${taskMarkers}</div>` : ''}
             </button>
           `;
         }
@@ -5228,14 +5233,7 @@
       if (calSelectedDate) {
         listEvents = listEvents.filter(ev => calendarCoversDate(ev, calSelectedDate));
       }
-      const sorted = listEvents.sort((a, b) => (a.date + (a.time || '')).localeCompare(b.date + (b.time || '')));
-
-      if (sorted.length === 0) {
-        list.innerHTML = `<p class="text-xs text-slate-500 text-center py-6">Keine Termine für diese Auswahl vorhanden.</p>`;
-        return;
-      }
-
-      list.innerHTML = sorted.map(ev => {
+      const renderEvent = ev => {
         const ownerRole = getEventOwnerRole(ev);
         const ownerName = getDisplayName(ownerRole);
         const isMasterEv = ownerRole === 'Master';
@@ -5261,7 +5259,25 @@
             </div>
           </div>
         `;
+      };
+      const entries = listEvents.map(ev => ({date:ev.date,time:ev.time || '',group:calendarCoversDate(ev,today)?'today':calendarHasEnded(ev)?'past':'future',html:renderEvent(ev)}));
+      for (const t of calendarTasks) {
+        const date = t.deadline.slice(0,10), time = t.deadline.slice(11,16);
+        if (calSelectedDate && date !== calSelectedDate) continue;
+        const late = taskStatus(t) === 'overdue';
+        const gold = t.assignee === 'Master';
+        entries.push({date,time,group:date===today?'today':date<today?'past':'future',task:true,html:`<button type="button" onclick="switchTab('aufgaben')" class="w-full text-left p-3.5 rounded-xl border ${late?'border-rose-500 text-rose-300':'border-slate-600 text-white'} bg-white/[0.03] flex justify-between gap-2"><span><span class="block text-xs ${gold?'text-[#e5b55c]':'text-rose-300'}">${escapeHtml(getDisplayName(t.assignee))} · ${formatDateDE(date)} bis ${escapeHtml(time)} Uhr</span><span class="font-semibold text-sm">${escapeHtml(t.title)}</span>${late?' <span class="text-xs">Überfällig</span>':''}</span><span class="self-start rounded px-2 py-1 text-black ${gold?'bg-[#c9973e]':'bg-rose-400'}">✓</span></button>`});
+      }
+      const storageKey = 'dominion-test-calendar-sections-v1-'+currentRole;
+      let saved = {};
+      try { saved = JSON.parse(localStorage.getItem(storageKey)||'{}') || {}; } catch {}
+      list.innerHTML = '<h3 class="font-semibold text-sm">Termine &amp; Aufgabenfristen</h3>'+[['today','Heute'],['future','Bevorstehend'],['past','Vergangen']].map(([key,label])=>{
+        const rows = entries.filter(e=>e.group===key).sort((a,b)=>(key==='past'?-1:1)*(a.date+a.time).localeCompare(b.date+b.time));
+        const open = calSelectedDate || (saved[key] ?? key!=='past');
+        return `<details data-calendar-section="${key}" ${open?'open':''} class="rounded-xl border border-slate-700 p-2"><summary class="cursor-pointer font-semibold text-sm p-1">${label} (${rows.length})</summary><div class="space-y-2 mt-2">${rows.map(e=>key==='past'&&!e.task?'<div class="grayscale opacity-60">'+e.html+'</div>':e.html).join('')||'<p class="text-xs text-slate-500 p-2">Keine Einträge</p>'}</div></details>`;
       }).join('');
+      list.querySelectorAll('[data-calendar-section]').forEach(el=>{el.ontoggle=()=>{if(calSelectedDate)return;try{const state=JSON.parse(localStorage.getItem(storageKey)||'{}')||{};state[el.dataset.calendarSection]=el.open;localStorage.setItem(storageKey,JSON.stringify(state));}catch{}};});
+
     }
 
     function calendarEndDate(ev) { return ev.endDate || ev.date; }
