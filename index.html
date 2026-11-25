@@ -5935,14 +5935,14 @@
       dialog.id = 'task-closure-dialog';
       dialog.className = 'fixed inset-0 z-[100] bg-black/80 flex items-center justify-center p-4';
       dialog.innerHTML = `<section class="w-full max-w-lg rounded-2xl bg-slate-900 border border-slate-600 p-5 space-y-4">
-        <h2 class="font-bold text-lg">Aufgabe abschließen</h2>
+        <h2 class="font-bold text-lg">Aufgabe entscheiden</h2>
         <p class="text-sm text-slate-300"></p>
         <label class="block"><input type="radio" name="task-closure" value="done" checked> 🟢 Aufgabe erledigt</label>
         <label class="block"><input type="radio" name="task-closure" value="rejected"> 🔴 Aufgabe nicht erledigt</label>
-        <label class="block"><input type="radio" name="task-closure" value="withdraw"> ⚪ Aufgabe zurückziehen</label>
+        <label class="block" data-extend-choice><input type="radio" name="task-closure" value="extend"> 🟡 Frist verlängern</label><label data-extend-date hidden class="text-sm">Neue Frist <input type="datetime-local" class="w-full rounded-lg bg-slate-800 p-2"></label><label class="block"><input type="radio" name="task-closure" value="withdraw"> ⚪ Aufgabe zurückziehen</label>
         <label class="block text-sm">Kommentar an Daisy (optional)<textarea class="w-full rounded-lg bg-slate-800 p-2 mt-2" rows="3" maxlength="2000"></textarea></label>
         <p class="text-xs text-slate-300" data-summary></p>
-        <div class="flex justify-end gap-2"><button data-cancel class="px-3 py-2 rounded-lg bg-white/10">Abbrechen</button><button data-submit class="px-3 py-2 rounded-lg gold-gradient text-black">Abschluss bestätigen</button></div>
+        <div class="flex justify-end gap-2"><button data-cancel class="px-3 py-2 rounded-lg bg-white/10">Abbrechen</button><button data-submit class="px-3 py-2 rounded-lg gold-gradient text-black">Entscheidung speichern</button></div>
       </section>`;
       if (['done','rejected'].includes(task.status)) {
         dialog.querySelector('h2').textContent = 'Abschluss korrigieren';
@@ -5950,21 +5950,26 @@
         dialog.querySelector('textarea').value = task.closureComment || '';
       }
       dialog.querySelector('p').textContent = (task.number || '') + ' · ' + task.title;
-      const choice = () => dialog.querySelector('input:checked').value;
-      const summary = () => { dialog.querySelector('[data-summary]').textContent = ({done:'Belohnungspunkte werden gebucht. Bisherige Minuspunkte bleiben erhalten.',rejected:'Keine Belohnungspunkte und keine neuen Minuspunkte. Bisherige Minuspunkte bleiben erhalten.',withdraw:'Aufgabe entfernen und sämtliche zugehörigen Punktebuchungen rückgängig machen.'})[choice()]; };
+      const extendAllowed = !['done','rejected'].includes(taskStatus(task));
+      dialog.querySelector('[data-extend-choice]').hidden = !extendAllowed;
+      dialog.querySelector('input[value="extend"]').disabled = !extendAllowed;
+      const dateInput = dialog.querySelector('input[type="datetime-local"]');
+      const choice = () => dialog.querySelector('input[name="task-closure"]:checked').value;
+      const summary = () => { dialog.querySelector('[data-extend-date]').hidden = choice() !== 'extend'; dialog.querySelector('[data-summary]').textContent = ({done:'Belohnungspunkte werden gebucht. Bisherige Minuspunkte bleiben erhalten.',rejected:'Keine Belohnungspunkte und keine neuen Minuspunkte. Bisherige Minuspunkte bleiben erhalten.',extend:'Aufgabe erneut öffnen; bisherige Minuspunkte bleiben erhalten.',withdraw:'Aufgabe entfernen und sämtliche zugehörigen Punktebuchungen rückgängig machen.'})[choice()]; };
       dialog.addEventListener('change',summary); summary();
       dialog.querySelector('[data-cancel]').onclick = () => { if (!taskClosurePending) dialog.remove(); };
       dialog.querySelector('[data-submit]').onclick = async () => {
         const button = dialog.querySelector('[data-submit]');
         button.disabled = true;
-        try { if (await closeTaskAtomically(id,choice(),dialog.querySelector('textarea').value.trim())) dialog.remove(); }
+        try { if (await closeTaskAtomically(id,choice(),dialog.querySelector('textarea').value.trim(),dateInput.value)) dialog.remove(); }
         finally { button.disabled = false; }
       };
       document.body.appendChild(dialog);
     }
-    async function closeTaskAtomically(id, decision, comment) {
+    async function closeTaskAtomically(id, decision, comment, deadline) {
+      if (decision === 'extend' && (!Number.isFinite(Date.parse(deadline)) || Date.parse(deadline) <= Date.now())) { showToast('Neue Frist muss in der Zukunft liegen.','error'); return false; }
       if (currentRole !== 'Master' || testAuthRole !== 'Master' || !testAuthUser ||
-          !['done','rejected','withdraw'].includes(decision) || taskClosurePending ||
+          !['done','rejected','withdraw','extend'].includes(decision) || taskClosurePending ||
           location.hostname !== 'jnilats33.github.io' || !location.pathname.startsWith('/Dominion-Test/') ||
           firebaseRoomPathPending !== DEVELOPMENT_TEST_ROOM || !firebaseDbRef || !productionRoomLoaded ||
           productionSyncConflict || isApplyingRemoteUpdate || recoveryPending || deadlineTransactionPending ||
@@ -5996,9 +6001,13 @@
               !(next.deletedRewardKeys || []).includes(key)) {
             next.rewardLedger.push({id:key,amount:rewardAmount(task.plusPoints),description:'Aufgabe erfüllt: '+task.title,timestamp,actorRole:'Master'});
           }
-          const label = {done:'Aufgabe erledigt',rejected:'Aufgabe nicht erledigt',withdraw:'Aufgabe zurückgezogen'}[decision];
+          const label = {done:'Aufgabe erledigt',rejected:'Aufgabe nicht erledigt',withdraw:'Aufgabe zurückgezogen',extend:'Frist verlängert'}[decision];
           if (decision === 'withdraw') {
             next.mgmt.aufgaben = tasks.filter(t => t.id !== id);
+          } else if (decision === 'extend') {
+            if (['done','rejected'].includes(taskStatus(task)) || Date.parse(deadline) <= timestamp || (task.deadline && Date.parse(deadline) <= Date.parse(task.deadline))) return;
+            (task.history ||= []).push({event:label,at:timestamp,previousDeadline:task.deadline || '',deadline,comment});
+            task.cycle = Number(task.cycle || 0) + 1; task.deadline = deadline; task.status = 'open'; task.done = false; task.lastEditedBy = 'Master'; task.reportedAt = null;
           } else {
             task.status = decision; task.done = decision === 'done'; task.lastEditedBy = 'Master';
             task.closureComment = comment; task.closedAt = timestamp;
@@ -6014,23 +6023,6 @@
         showToast('Aufgabenabschluss auf TEST-Server gespeichert.'); return true;
       } catch(error) { showToast('Abschluss nicht ausgeführt: '+error.message,'error'); return false; }
       finally { taskClosurePending = false; }
-    }
-    function reviewTask(id, decision) {
-      if (currentRole !== 'Master') return;
-      if (decision !== 'extend') { openTaskClosure(id); return; }
-      const task = appState.mgmt.aufgaben.find(t => t.id === id);
-      if (!task || task.assignee !== 'Daisy' || task.taskKind === 'personal' || !['review','overdue'].includes(task.status)) return;
-      if (decision === 'extend') {
-        const deadline = prompt('Neue Deadline (JJJJ-MM-TTTHH:MM)', task.deadline || '');
-        if (!deadline) return;
-        if (!Number.isFinite(new Date(deadline).getTime()) || new Date(deadline).getTime() <= Date.now()) return showToast('Neue Deadline muss in der Zukunft liegen.', 'error');
-        task.cycle = (task.cycle || 0) + 1;
-        task.deadline = deadline;
-        task.status = 'open'; task.lastEditedBy = currentRole;
-        task.reportedAt = null;
-        (task.history ||= []).push({ event: 'Frist verlängert', at: Date.now(), deadline });
-      }
-      persistState(); refreshAllUI();
     }
     function renderTasks() {
       migrateLegacyTasks();
@@ -6050,11 +6042,9 @@
         const buttons = personal
           ? ((currentRole === 'Daisy' && t.assignee === 'Daisy') && !['done','rejected'].includes(status) ? '<button onclick="completeMasterTask(\'' + t.id + '\')" class="px-3 py-1 rounded-lg bg-emerald-900/40 text-emerald-200">Erledigt</button>' : '')
           : (currentRole === 'Daisy' && ['open','overdue'].includes(status) ? '<button onclick="reportTask(\'' + t.id + '\')" class="px-3 py-1 rounded-lg bg-amber-900/40 text-amber-200">Erledigt melden</button>' : '');
-        const reviewButtons = !personal && currentRole === 'Master' && t.assignee === 'Daisy' && ['review','overdue'].includes(status)
-          ? ['extend'].map((d,i) => '<button onclick="reviewTask(\'' + t.id + '\',\'' + d + '\')" class="px-3 py-1 rounded-lg bg-white/10">' + ['Frist verlängern'][i] + '</button>').join('')
-          : '';
+        const reviewButtons = '';
         const edit = canChangeEntry('aufgaben','edit',t) && status === 'open' ? '<button onclick="editTask(\'' + t.id + '\')" class="px-3 py-1 rounded-lg bg-white/10">Bearbeiten</button>' : '';
-        return '<div class="rounded-xl border ' + style[2] + ' bg-white/[0.03] p-3 space-y-2"><div class="flex flex-wrap justify-between gap-2"><strong class="text-sm">' + escapeHtml(t.title) + '</strong>' + badgeMark("aufgaben",t.id) + '<span class="text-xs ' + style[1] + '">' + style[0] + '</span></div><p class="text-xs text-slate-400">' + escapeHtml(t.desc || '') + '</p><div class="text-xs text-slate-400">Für: ' + escapeHtml(getDisplayName(t.assignee || 'Master')) + ' · Frist: ' + (t.deadline ? new Date(t.deadline).toLocaleString('de-DE') : 'Keine (Altbestand)') + '</div>' + (t.assignee === 'Daisy' ? '<div class="text-xs text-slate-400">+' + rewardAmount(t.plusPoints) + ' / −' + rewardAmount(t.minusPoints) + ' Punkte pro Fristversäumnis</div>' : '') + (t.reportedAt ? '<div class="text-xs text-amber-300">Gemeldet: ' + new Date(t.reportedAt).toLocaleString('de-DE') + '</div>' : '') + (t.closureComment ? '<p class="text-xs text-amber-200">Kommentar zum Abschluss: ' + escapeHtml(t.closureComment) + '</p>' : '') + '<div class="flex flex-wrap gap-2 text-xs">' + buttons + reviewButtons + edit + (currentRole === 'Master' ? '<button onclick="openTaskClosure(\'' + t.id + '\')" class="px-3 py-1 rounded-lg bg-white/10"' + (['done','rejected'].includes(status) ? ' title="Abschluss korrigieren" aria-label="Abschluss korrigieren">✎' : '>Aufgabe abschließen') + '</button>' : '') + '</div></div>';
+        return '<div class="rounded-xl border ' + style[2] + ' bg-white/[0.03] p-3 space-y-2"><div class="flex flex-wrap justify-between gap-2"><strong class="text-sm">' + escapeHtml(t.title) + '</strong>' + badgeMark("aufgaben",t.id) + '<span class="text-xs ' + style[1] + '">' + style[0] + '</span></div><p class="text-xs text-slate-400">' + escapeHtml(t.desc || '') + '</p><div class="text-xs text-slate-400">Für: ' + escapeHtml(getDisplayName(t.assignee || 'Master')) + ' · Frist: ' + (t.deadline ? new Date(t.deadline).toLocaleString('de-DE') : 'Keine (Altbestand)') + '</div>' + (t.assignee === 'Daisy' ? '<div class="text-xs text-slate-400">+' + rewardAmount(t.plusPoints) + ' / −' + rewardAmount(t.minusPoints) + ' Punkte pro Fristversäumnis</div>' : '') + (t.reportedAt ? '<div class="text-xs text-amber-300">Gemeldet: ' + new Date(t.reportedAt).toLocaleString('de-DE') + '</div>' : '') + (t.closureComment ? '<p class="text-xs text-amber-200">Kommentar zum Abschluss: ' + escapeHtml(t.closureComment) + '</p>' : '') + '<div class="flex flex-wrap gap-2 text-xs">' + buttons + reviewButtons + edit + (currentRole === 'Master' ? '<button onclick="openTaskClosure(\'' + t.id + '\')" class="px-3 py-1 rounded-lg bg-white/10"' + (['done','rejected'].includes(status) ? ' title="Abschluss korrigieren" aria-label="Abschluss korrigieren">✎' : '>Aufgabe entscheiden') + '</button>' : '') + '</div></div>';
       }).join('') || '<p class="text-xs text-slate-400">Noch keine Aufgaben vorhanden.</p>';
     }
     // Selection is local and provisional until an RTDB ledger transaction commits.
