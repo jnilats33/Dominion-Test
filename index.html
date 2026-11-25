@@ -289,7 +289,7 @@
               <span>📰 Aktuelles Update – Änderungen anzeigen</span>
               <span class="group-open:rotate-180 transition-transform" aria-hidden="true">▾</span>
             </summary>
-            <div class="mt-3 space-y-3"><div class="text-xs text-slate-300"><h4 class="font-semibold text-[#e5b55c]">Planung – Übersicht, Termine, Aufgaben und Rituale</h4><p>Datumsgruppen in der chronologischen Liste; Kalenderpiktogramme springen zum passenden Eintrag mit Hervorhebung.</p></div>
+            <div class="mt-3 space-y-3"><div class="text-xs text-slate-300"><h4 class="font-semibold text-[#e5b55c]">Planung – Übersicht, Termine, Aufgaben und Rituale</h4><p>Rollenbezogene Kollisionsprüfung beim Anlegen und Bearbeiten; neue Termine mit 30 Minuten vorbelegt.</p><p>Datumsgruppen in der chronologischen Liste; Kalenderpiktogramme springen zum passenden Eintrag mit Hervorhebung.</p></div>
           <p class="text-[11px] text-slate-400">Stand: 25.11.2026 · Version 2.14 TEST</p>
           <div class="text-xs text-slate-300"><h4 class="font-semibold text-[#e5b55c] mb-1">Aufgaben – neues Pop-up</h4><ul class="list-disc pl-4 space-y-1"><li>Aufgaben werden jetzt in einem Pop-up im Design des Kalenderdialogs angelegt.</li><li>Auch bestehende Aufgaben werden im selben Pop-up bearbeitet.</li><li>Deadline, Erinnerung, Zuständigkeit, Aufgabenart und Punkte bleiben erhalten.</li></ul></div>
           <div class="space-y-3 text-xs text-slate-300 leading-relaxed">
@@ -626,14 +626,14 @@
                 <label class="block text-xs text-slate-300">Titel<input id="cal-title" type="text" placeholder="Titel des Termins..." class="w-full mt-1 px-3.5 py-2.5 text-sm" /></label>
                 <label class="block text-xs text-slate-300">Für wen?<select id="cal-owner" onchange="updateCalendarPointsVisibility()" class="w-full mt-1 px-3 py-2.5 text-sm"><option value="Master">♛ Master</option><option value="Daisy">🌸 Daisy</option><option value="both">♛🌸 Beide</option></select></label>
                 <div class="grid grid-cols-1 sm:grid-cols-2 gap-3">
-                  <label class="text-xs text-slate-300">Startdatum<input id="cal-date" type="date" class="w-full mt-1 px-3 py-2.5 text-sm" /></label>
-                  <label class="text-xs text-slate-300">Startzeit (optional)<input id="cal-time" type="time" class="w-full mt-1 px-3 py-2.5 text-sm" /></label>
+                  <label class="text-xs text-slate-300">Startdatum<input id="cal-date" type="date" onchange="if(!calendarEditingId)calendarDefaultEnd()" class="w-full mt-1 px-3 py-2.5 text-sm" /></label>
+                  <label class="text-xs text-slate-300">Startzeit (optional)<input id="cal-time" type="time" onchange="if(!calendarEditingId)calendarDefaultEnd()" class="w-full mt-1 px-3 py-2.5 text-sm" /></label>
                   <label class="text-xs text-slate-300">Enddatum (optional)<input id="cal-end-date" type="date" class="w-full mt-1 px-3 py-2.5 text-sm" /></label>
                   <label class="text-xs text-slate-300">Endzeit (optional)<input id="cal-end-time" type="time" class="w-full mt-1 px-3 py-2.5 text-sm" /></label>
                 </div>
                 <label class="block text-xs text-slate-300">Erinnerung<select id="cal-reminder" class="w-full mt-1 px-3 py-2.5 text-sm"><option value="">Keine Erinnerung</option><option value="30">30 Minuten vorher</option><option value="60">1 Stunde vorher</option><option value="240">4 Stunden vorher</option><option value="1440">1 Tag vorher</option><option value="4320">3 Tage vorher</option><option value="20160">2 Wochen vorher</option></select></label>
                 <div id="cal-points-section" class="hidden rounded-xl border border-rose-500/20 bg-rose-500/5 p-3 space-y-2"><div class="grid grid-cols-1 sm:grid-cols-2 gap-3"><label class="block text-xs text-slate-300">Punkte bei Erfüllung<input id="cal-points-plus" type="number" min="0" step="1" value="0" class="w-full mt-1 px-3 py-2.5 text-sm" /></label><label class="block text-xs text-slate-300">Abzug für Nichterfüllung<input id="cal-points-minus" type="number" min="0" step="1" value="0" class="w-full mt-1 px-3 py-2.5 text-sm" /></label></div><p class="text-[11px] text-slate-400">Punkte werden erst nach Bestätigung durch Master gebucht.</p></div>
-                <div id="cal-edit-actions" class="hidden"><label class="text-xs text-slate-300 flex items-center gap-2"><input id="cal-edit-pair" type="checkbox" checked /> Beide verknüpften Termine ändern</label></div>
+                <div id="cal-conflict" role="alert" class="hidden rounded-xl border border-rose-500/60 bg-rose-500/10 p-3 text-sm text-rose-200 whitespace-pre-line"></div><div id="cal-edit-actions" class="hidden"><label class="text-xs text-slate-300 flex items-center gap-2"><input id="cal-edit-pair" type="checkbox" checked /> Beide verknüpften Termine ändern</label></div>
               </div>
               <div class="flex justify-end gap-2 pt-2 border-t border-slate-700"><button type="button" onclick="closeCalendarDialog()" class="px-4 py-2.5 rounded-lg bg-slate-700 text-slate-200 text-sm">Abbrechen</button><button id="cal-save-btn" type="button" onclick="submitCalendarDialog()" class="px-4 py-2.5 rounded-lg gold-gradient font-semibold text-sm">Termin anlegen</button></div>
             </div>
@@ -5368,7 +5368,40 @@
       const time = ev.endTime || (ev.endDate ? '23:59' : ev.time || '23:59');
       return Date.now() >= new Date(end + 'T' + time).getTime();
     }
+    function calendarConflictMessage(message) {
+      const box=document.getElementById('cal-conflict');
+      box.textContent=message||''; box.classList.toggle('hidden',!message);
+      if(message) box.scrollIntoView({block:'nearest'});
+    }
+    function calendarInterval(e) {
+      if(!e.time || (!e.endTime && !e.endDate)) return null;
+      const start=Date.parse(e.date+'T'+e.time);
+      const end=Date.parse((e.endDate||e.date)+'T'+(e.endTime||'00:00')) + (!e.endTime && e.endDate ? 86400000 : 0);
+      return Number.isFinite(start)&&Number.isFinite(end)&&end>start?[start,end]:null;
+    }
+    function calendarCheckConflict(data,owners,excluded=[]) {
+      calendarConflictMessage('');
+      const span=calendarInterval(data);
+      if(!span) return true;
+      const conflicts=appState.kalender.filter(e=>{
+        if(excluded.includes(e.id)||!owners.includes(getEventOwnerRole(e))) return false;
+        const other=calendarInterval(e);
+        return other && span[0]<other[1] && other[0]<span[1];
+      });
+      if(!conflicts.length) return true;
+      calendarConflictMessage('Terminkonflikt – dieser Zeitraum ist bereits belegt.\n'+conflicts.map(e=>getDisplayName(getEventOwnerRole(e))+': '+e.title+' · '+formatDateDE(e.date)+' '+(e.time||'')+' – '+formatDateDE(e.endDate||e.date)+' '+(e.endTime||'Tagesende')).join('\n')+'\nBitte Start- oder Endzeit anpassen.');
+      return false;
+    }
+    function calendarDefaultEnd() {
+      const date=document.getElementById('cal-date').value, time=document.getElementById('cal-time').value;
+      if(!date||!time) return;
+      const d=new Date(date+'T'+time); if(!Number.isFinite(d.getTime()))return;
+      d.setMinutes(d.getMinutes()+30);
+      document.getElementById('cal-end-date').value=localPlanningDate(d)===date?'':localPlanningDate(d);
+      document.getElementById('cal-end-time').value=String(d.getHours()).padStart(2,'0')+':'+String(d.getMinutes()).padStart(2,'0');
+    }
     function calendarFormData() {
+      calendarConflictMessage('');
       const title = document.getElementById('cal-title').value.trim();
       const date = document.getElementById('cal-date').value;
       const time = document.getElementById('cal-time').value || '';
@@ -5383,6 +5416,10 @@
       if (endDate && endDate < date || endDate === date && endTime && time && endTime < time || !endDate && endTime && time && endTime < time) {
         showToast('Das Ende darf nicht vor dem Beginn liegen. Für Termine über Mitternacht bitte Enddatum angeben.', 'error'); return null;
       }
+      if ((endTime||endDate) && (!time || !calendarInterval({date,time,endDate,endTime}))) {
+        calendarConflictMessage('Bitte eine gültige Zeitspanne angeben oder Enddatum und Endzeit für einen punktuellen Termin entfernen.');
+        return null;
+      }
       return {title,date,time,endDate,endTime,owner,pointsPlus,pointsMinus,reminderMinutes};
     }
     function addCalendarEvent() {
@@ -5391,6 +5428,7 @@
       if (!data) return;
       const groupId = 'calgroup-' + Date.now() + '-' + Math.random().toString(36).slice(2,7);
       const owners = data.owner === 'both' ? ['Master','Daisy'] : [data.owner];
+      if (!calendarCheckConflict(data,owners)) return;
       for (const owner of owners) {
         const ev = {id:'cal-' + Date.now() + '-' + Math.random().toString(36).slice(2,9),title:data.title,date:data.date,time:data.time,endDate:data.endDate,endTime:data.endTime,reminderMinutes:data.reminderMinutes,owner,createdBy:currentRole,groupId:data.owner === 'both' ? groupId : null,pointsPlus:owner === 'Daisy' && currentRole === 'Master' ? data.pointsPlus : 0,pointsMinus:owner === 'Daisy' && currentRole === 'Master' ? data.pointsMinus : 0,confirmed:false};
         appState.kalender.push(ev);
@@ -5402,6 +5440,7 @@
     function editCalendarEvent(id) {
       const ev = appState.kalender.find(x => x.id === id);
       if (!ev || !canChangeEntry('kalender','edit',ev)) return;
+      calendarConflictMessage('');
       calendarEditingId = id;
       document.getElementById('cal-title').value = ev.title;
       document.getElementById('cal-date').value = ev.date;
@@ -5440,6 +5479,8 @@
       document.getElementById('cal-time').value = appState.basics.defaultEventTime || '18:00';
       document.getElementById('cal-end-date').value = '';
       document.getElementById('cal-end-time').value = '';
+      calendarConflictMessage('');
+      calendarDefaultEnd();
       document.getElementById('cal-owner').value = currentRole === 'Daisy' ? 'Daisy' : 'Master';
       document.getElementById('cal-owner').disabled = false;
       document.getElementById('cal-points-plus').value = '0';
@@ -5467,6 +5508,7 @@
       const pair = !!ev.groupId && document.getElementById('cal-edit-pair').checked;
       const targets = pair ? appState.kalender.filter(x => x.groupId === ev.groupId) : [ev];
       if (!targets.every(x => canChangeEntry('kalender','edit',x))) { showToast('Keine Berechtigung für alle verknüpften Termine.', 'error'); return; }
+      if (!calendarCheckConflict(data,targets.map(getEventOwnerRole),targets.map(x=>x.id))) return;
       targets.forEach(x => {
         x.title=data.title; x.date=data.date; x.time=data.time; x.endDate=data.endDate; x.endTime=data.endTime; x.reminderMinutes=data.reminderMinutes; x.lastEditedBy=currentRole;
         if (x.owner === 'Daisy' && currentRole === 'Master' && !x.confirmed && x.id === ev.id) { x.pointsPlus=data.pointsPlus; x.pointsMinus=data.pointsMinus; delete x.points; }
