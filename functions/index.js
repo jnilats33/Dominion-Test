@@ -40,10 +40,21 @@ exports.registerTestPushDevice = onCall({
     throw new HttpsError('invalid-argument', 'Invalid device registration.');
   }
   // Token paths are server-owned and must be denied to RTDB clients.
-  await getDatabase().ref(`pushDevices/${ROOM}/${role}/${deviceId}`).set({
-    token,
-    updatedAt: Date.now(),
+  const updatedAt = Date.now();
+  const result = await getDatabase().ref(`pushDevices/${ROOM}`).transaction(current => {
+    const devices = current || {};
+    for (const existingRole of ROLES) {
+      const entries = devices[existingRole] || {};
+      for (const [id, entry] of Object.entries(entries)) {
+        if (id === deviceId || entry?.token === token) delete entries[id];
+      }
+      devices[existingRole] = entries;
+    }
+    devices[role][deviceId] = { token, updatedAt };
+    return devices;
   });
+  if (!result.committed) throw new HttpsError('aborted', 'Device registration not committed.');
+  logger.info('test_push_device_registered', { role });
   return { registered: true };
 });
 
