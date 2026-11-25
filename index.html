@@ -946,7 +946,7 @@
               <h3 class="font-semibold text-sm text-white">🔔 Benachrichtigungen auf diesem Gerät</h3>
               <p class="text-xs text-slate-300">Erlaube Benachrichtigungen für dieses Smartphone. Die Zustellung bei geschlossener App wird separat getestet.</p>
               <span id="daisy-push-status-pill" class="inline-block text-[11px] px-2.5 py-1 rounded-full bg-amber-500/15 text-amber-300 border border-amber-500/30">Nicht geprüft</span>
-              <div><button onclick="requestPushPermissions()" class="px-5 py-2.5 rounded-xl gold-gradient font-semibold text-xs shadow">🔔 Push-Benachrichtigungen aktivieren</button></div>
+              <div><button data-push-activation onclick="requestPushPermissions()" class="px-5 py-2.5 rounded-xl gold-gradient font-semibold text-xs shadow">🔔 Push-Benachrichtigungen aktivieren</button></div>
             </div>
           </div>
 
@@ -1007,7 +1007,7 @@
               <p class="text-xs text-slate-300 leading-relaxed">
                 Aktiviere Push-Benachrichtigungen, um den Service Worker zu registrieren und Benachrichtigungen im Hintergrund zu erlauben.
               </p>
-              <button onclick="requestPushPermissions()" class="px-5 py-2.5 rounded-xl gold-gradient font-semibold text-xs shadow">
+              <button data-push-activation onclick="requestPushPermissions()" class="px-5 py-2.5 rounded-xl gold-gradient font-semibold text-xs shadow">
                 🔔 Push-Benachrichtigungen aktivieren
               </button>
             </div>
@@ -3240,6 +3240,7 @@
       firebase.auth().onAuthStateChanged(async (user) => {
         testAuthUser = null;
         testAuthRole = null;
+        setPushPermissionStatus('Registrierung wird geprüft', false);
         if (user) {
           try {
             const result = await user.getIdTokenResult();
@@ -3325,6 +3326,7 @@
     async function registerTestPushToken() {
       if (!testAuthUser || testAuthRole !== currentRole || !currentRole ||
           !('Notification' in window) || Notification.permission !== 'granted') return;
+      const registrationRole = currentRole;
       const prefs = getDevicePrefs();
       if (!prefs.fcmToken) return;
       if (!prefs.pushDeviceId) {
@@ -3335,10 +3337,15 @@
         token:prefs.fcmToken,deviceId:prefs.pushDeviceId
       });
       if (result.data?.registered !== true) throw new Error('Test-Geräteregistrierung nicht bestätigt.');
-      setPushPermissionStatus('TEST Push registriert',true);
+      if (currentRole === registrationRole && testAuthRole === registrationRole && testAuthUser) {
+        setPushPermissionStatus('TEST Push registriert',true);
+      }
     }
 
     function setPushPermissionStatus(message, ok) {
+      for (const button of document.querySelectorAll('[data-push-activation]')) {
+        button.textContent = ok ? '✓ Push aktiv – erneut registrieren' : '🔔 Push-Benachrichtigungen aktivieren';
+      }
       for (const id of ['push-status-pill', 'daisy-push-status-pill']) {
         const pill = document.getElementById(id);
         if (pill) {
@@ -3881,6 +3888,7 @@
     function logoutRole() {
       masterToDaisyBypass = currentRole === 'Master';
       currentRole = null;
+      setPushPermissionStatus('Nicht geprüft', false);
       document.getElementById('main-app').classList.add('hidden');
       document.getElementById('bottom-nav').classList.add('hidden');
       document.getElementById('role-screen').classList.remove('hidden');
