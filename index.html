@@ -289,7 +289,7 @@
               <span>📰 Aktuelles Update – Änderungen anzeigen</span>
               <span class="group-open:rotate-180 transition-transform" aria-hidden="true">▾</span>
             </summary>
-            <div class="mt-3 space-y-3"><div class="text-xs text-slate-300"><h4 class="font-semibold text-[#e5b55c]">Kalender – Tagesgruppen und Navigation</h4><p>Datumsgruppen in der chronologischen Liste; Kalenderpiktogramme springen zum passenden Eintrag mit Hervorhebung.</p></div>
+            <div class="mt-3 space-y-3"><div class="text-xs text-slate-300"><h4 class="font-semibold text-[#e5b55c]">Planung – Übersicht, Termine, Aufgaben und Rituale</h4><p>Datumsgruppen in der chronologischen Liste; Kalenderpiktogramme springen zum passenden Eintrag mit Hervorhebung.</p></div>
           <p class="text-[11px] text-slate-400">Stand: 25.11.2026 · Version 2.14 TEST</p>
           <div class="text-xs text-slate-300"><h4 class="font-semibold text-[#e5b55c] mb-1">Aufgaben – neues Pop-up</h4><ul class="list-disc pl-4 space-y-1"><li>Aufgaben werden jetzt in einem Pop-up im Design des Kalenderdialogs angelegt.</li><li>Auch bestehende Aufgaben werden im selben Pop-up bearbeitet.</li><li>Deadline, Erinnerung, Zuständigkeit, Aufgabenart und Punkte bleiben erhalten.</li></ul></div>
           <div class="space-y-3 text-xs text-slate-300 leading-relaxed">
@@ -558,11 +558,12 @@
         </div>
       </div>
       <!-- ==================== 3. KALENDER ==================== -->
+      <div id="planning-nav" class="hidden grid grid-cols-4 gap-1 mb-3"><button type="button" data-plan="overview" onclick="openPlanning('overview')" class="relative rounded-xl border border-slate-700 p-2 text-xs"><span class="block text-lg">☷</span>Übersicht</button><button type="button" data-plan="events" onclick="openPlanning('events')" class="relative rounded-xl border border-slate-700 p-2 text-xs"><span class="block text-lg">📅</span>Termine</button><button type="button" data-plan="tasks" onclick="openPlanning('tasks')" class="relative rounded-xl border border-slate-700 p-2 text-xs"><span class="block text-lg">✅</span>Aufgaben</button><button type="button" data-plan="rituals" onclick="openPlanning('rituals')" class="relative rounded-xl border border-slate-700 p-2 text-xs"><span class="block text-lg">↻</span>Rituale</button></div>
       <section id="tab-kalender" class="hidden space-y-4 animate-fade">
         <div class="glass-card rounded-2xl p-5 space-y-4">
           <div class="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
             <div>
-              <h2 class="font-display text-lg font-bold text-[#e5b55c]">Kalender & Termine</h2>
+              <h2 class="font-display text-lg font-bold text-[#e5b55c]">Planung</h2>
               <p class="text-xs text-slate-400">Gemeinsame Planung & überlagerte Übersicht</p>
             </div>
 
@@ -581,7 +582,7 @@
           </div>
 
           <!-- Visual Month Calendar Grid -->
-          <div class="p-3.5 sm:p-4 rounded-2xl bg-white/[0.02] border border-slate-800">
+          <div id="planning-month" class="p-3.5 sm:p-4 rounded-2xl bg-white/[0.02] border border-slate-800">
             <div class="flex items-center justify-between mb-3">
               <button onclick="changeCalendarMonth(-1)" class="w-8 h-8 rounded-lg bg-white/5 hover:bg-white/10 text-slate-200 flex items-center justify-center text-sm font-bold transition">‹</button>
               <div class="text-center">
@@ -613,7 +614,7 @@
             <!-- Selected Date Filter Banner -->
             <div id="cal-selected-day-bar" class="hidden mt-3 pt-2.5 border-t border-slate-800 flex items-center justify-between text-xs">
               <span id="cal-selected-day-text" class="text-[#e5b55c] font-medium">Ausgewählter Tag:</span>
-              <button onclick="clearSelectedCalendarDate()" class="text-slate-400 hover:text-white underline">Alle Monatstermine zeigen</button>
+              <button onclick="clearSelectedCalendarDate()" class="text-slate-400 hover:text-white underline">Auswahl zurücksetzen</button>
             </div>
           </div>
 
@@ -638,6 +639,7 @@
             </div>
           </div>
 
+          <div id="planning-day" class="hidden space-y-3"></div><div id="planning-rituals" class="hidden text-sm text-slate-400 p-4">Rituale – in Vorbereitung.</div>
           <!-- Filtered Events List -->
           <div id="kalender-list" class="space-y-2.5"></div>
         </div>
@@ -1057,7 +1059,7 @@
 
   <!-- Bottom Navigation Bar (7 Main Tabs) -->
   <nav id="bottom-nav" class="hidden fixed bottom-0 inset-x-0 z-40 bg-[#171a24]/95 backdrop-blur-lg border-t border-slate-800 px-1 py-1.5">
-    <div class="max-w-4xl mx-auto grid grid-cols-9 gap-0.5">
+    <div class="max-w-4xl mx-auto grid grid-cols-8 gap-0.5">
       <button data-tab="dashboard" onclick="switchTab('dashboard')" class="nav-btn flex flex-col items-center justify-center py-1.5 px-0.5 rounded-xl text-slate-400 hover:text-white transition">
         <span class="text-base sm:text-lg leading-none">🏠</span>
         <span class="text-[9px] sm:text-[10px] mt-1 font-medium truncate max-w-full">Dashboard</span>
@@ -1066,9 +1068,9 @@
         <span class="text-base sm:text-lg leading-none">💬</span>
         <span class="text-[9px] sm:text-[10px] mt-1 font-medium truncate max-w-full">Chat</span>
       </button>
-      <button data-tab="kalender" onclick="switchTab('kalender')" class="nav-btn flex flex-col items-center justify-center py-1.5 px-0.5 rounded-xl text-slate-400 hover:text-white transition">
+      <button data-tab="kalender" onclick="openPlanning('overview')" class="nav-btn flex flex-col items-center justify-center py-1.5 px-0.5 rounded-xl text-slate-400 hover:text-white transition">
         <span class="text-base sm:text-lg leading-none">📅</span>
-        <span class="text-[9px] sm:text-[10px] mt-1 font-medium truncate max-w-full">Kalender</span>
+        <span class="text-[9px] sm:text-[10px] mt-1 font-medium truncate max-w-full">Planung</span>
       </button>
       <button data-tab="einkauf" onclick="switchTab('einkauf')" class="nav-btn flex flex-col items-center justify-center py-1.5 px-0.5 rounded-xl text-slate-400 hover:text-white transition">
         <span class="text-base sm:text-lg leading-none">🛒</span>
@@ -1078,7 +1080,7 @@
         <span class="text-base sm:text-lg leading-none">⚖️</span>
         <span class="text-[9px] sm:text-[10px] mt-1 font-medium truncate max-w-full">Strafbuch</span>
       </button>
-      <button data-tab="aufgaben" onclick="switchTab('aufgaben')" class="nav-btn flex flex-col items-center justify-center py-1.5 px-0.5 rounded-xl text-slate-400 hover:text-white transition"><span class="text-base sm:text-lg leading-none">✅</span><span class="text-[9px] sm:text-[10px] mt-1 font-medium">Aufgaben</span></button>
+      
       <button data-tab="rewards" onclick="switchTab('rewards')" class="nav-btn flex flex-col items-center justify-center py-1.5 px-0.5 rounded-xl text-slate-400 hover:text-white transition"><span class="text-base sm:text-lg leading-none">🎯</span><span class="text-[9px] sm:text-[10px] mt-1 font-medium">Rewards</span></button>
       <button data-tab="verwaltung" onclick="switchTab('verwaltung')" class="nav-btn flex flex-col items-center justify-center py-1.5 px-0.5 rounded-xl text-slate-400 hover:text-white transition">
         <span class="text-base sm:text-lg leading-none">📦</span>
@@ -4125,7 +4127,7 @@
           badgeSave(tab, badgeItems(tab).map(x => String(x.id)));
           ids = [];
         }
-        const button = document.querySelector('.nav-btn[data-tab="' + tab + '"]');
+        const button = tab==='aufgaben'?document.querySelector('[data-plan="tasks"]'):document.querySelector('.nav-btn[data-tab="' + tab + '"]');
         if (!button) continue;
         let badge = button.querySelector('.dominion-menu-count');
         if (!badge) {
@@ -4141,7 +4143,40 @@
       return menuNewHighlights[tab] && menuNewHighlights[tab].has(String(id))
         ? '<span class="inline-flex items-center rounded bg-sky-500/20 text-sky-200 border border-sky-500/40 px-1.5 py-0.5 text-[9px] font-bold ml-2">NEU</span>' : '';
     }
+    let planningView = 'overview';
+    function openPlanning(view) {
+      if (view === 'tasks') { switchTab('aufgaben'); return; }
+      if (!hasPermission('kalender','visible')) { if(hasPermission('aufgaben','visible')) switchTab('aufgaben'); return; }
+      planningView = view;
+      if (view === 'events' && !calSelectedDate) {
+        const d = new Date(); calSelectedDate = localPlanningDate(d);
+      }
+      if (view === 'overview') calSelectedDate = null;
+      switchTab('kalender');
+    }
+    function localPlanningDate(d) { return d.getFullYear()+'-'+String(d.getMonth()+1).padStart(2,'0')+'-'+String(d.getDate()).padStart(2,'0'); }
+    function syncPlanningUI() {
+      const inside = activeTab === 'kalender' || activeTab === 'aufgaben';
+      document.getElementById('planning-nav').classList.toggle('hidden',!inside);
+      document.querySelectorAll('[data-plan]').forEach(b=>{
+        const k=b.dataset.plan;
+        b.classList.toggle('hidden',k==='tasks'?!hasPermission('aufgaben','visible'):k!=='rituals'&&!hasPermission('kalender','visible'));
+        b.classList.toggle('gold-gradient',inside && k===(activeTab==='aufgaben'?'tasks':planningView));
+      });
+      document.getElementById('planning-month').classList.toggle('hidden',planningView!=='events');
+      document.getElementById('planning-day').classList.toggle('hidden',planningView!=='events');
+      document.getElementById('kalender-list').classList.toggle('hidden',planningView!=='overview');
+      document.getElementById('planning-rituals').classList.toggle('hidden',planningView!=='rituals');
+      document.getElementById('cal-new-trigger').classList.toggle('hidden',planningView!=='events'||!hasPermission('kalender','add'));
+      document.getElementById('cal-filter-all').parentElement.classList.toggle('hidden',planningView==='rituals');
+      const main=document.querySelector('#bottom-nav [data-tab="kalender"]');
+      main.classList.toggle('hidden',!hasPermission('kalender','visible')&&!hasPermission('aufgaben','visible'));
+      main.classList.toggle('bg-white/10',inside);
+      main.classList.toggle('text-[#e5b55c]',inside);
+      main.classList.toggle('text-slate-400',!inside);
+    }
     function switchTab(tabId) {
+      if(tabId==='aufgaben'&&!hasPermission('aufgaben','visible')) tabId='dashboard';
       if (currentRole === 'Daisy' && ['kalender', 'einkauf', 'strafbuch'].includes(tabId)) {
         if (!hasPermission(tabId, 'visible')) {
           showToast('Dieser Tab ist für dich nicht freigeschaltet.', 'error');
@@ -4216,6 +4251,7 @@
       renderTasks();
       renderRewards();
       renderEinstellungen();
+      syncPlanningUI();
       badgeRefresh();
     }
 
@@ -5090,9 +5126,7 @@
     }
 
     function selectCalendarDate(isoDate) {
-      if (calSelectedDate === isoDate) {
-        calSelectedDate = null;
-      } else {
+      {
         calSelectedDate = isoDate;
         const dateInput = document.getElementById('cal-date');
         if (dateInput) dateInput.value = isoDate;
@@ -5106,9 +5140,11 @@
     }
 
     function jumpCalendarList(iso, role, kind) {
+      planningView = "overview";
       calSelectedDate = null;
       if (role && calFilterRole !== 'all' && calFilterRole !== role) calFilterRole = role;
       renderKalender();
+      syncPlanningUI();
       const list = document.getElementById('kalender-list');
       const target = [...list.querySelectorAll('[data-cal-entry]')].find(el =>
         el.dataset.calStart <= iso && el.dataset.calEnd >= iso &&
@@ -5207,9 +5243,9 @@
           const marker = (role,kind,count) => count ? `<button type="button" onclick="event.stopPropagation();jumpCalendarList(\'${iso}\',\'${role}\',\'${kind}\')" class="flex items-center gap-0.5 min-w-0 leading-none ${role==='Master'?'text-[#e5b55c]':'text-rose-300'}" title="${role} · ${kind==='task'?'Aufgaben':'Termine'}: ${count}"><svg viewBox="0 0 16 16" width="11" height="11" class="shrink-0" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><rect x="2" y="3" width="12" height="11" rx="2"/>${kind==='task'?'<path d="m5 8 2 2 4-4"/>':'<path d="M5 1v4M11 1v4M2 7h12"/>'}</svg><span class="truncate">${count}</span></button>` : '<span></span>';
           const markersHtml = '<div class="grid grid-cols-2 gap-x-1 gap-y-1 w-full text-[10px]">'+['Master','Daisy'].map(role=>marker(role,'event',role==='Master'?masterEvents.length:daisyEvents.length)+marker(role,'task',calendarTasks.filter(t=>t.assignee===role&&t.deadline.slice(0,10)===iso).length)).join('')+'</div>';
           cellsHtml += `
-            <div role="group"
+            <div role="group" onclick="selectCalendarDate('${iso}')"
                     class="h-14 sm:h-16 p-1 rounded-xl border ${cellBorder} ${cellBg} flex flex-col justify-between text-left transition overflow-hidden">
-              <button type="button" onclick="jumpCalendarList('${iso}')" class="w-full text-left text-[11px] font-semibold ${isToday ? 'text-[#e5b55c]' : 'text-slate-300'}">${day}</button>
+              <button type="button" onclick="event.stopPropagation();selectCalendarDate('${iso}')" class="w-full text-left text-[11px] font-semibold ${isToday ? 'text-[#e5b55c]' : 'text-slate-300'}">${day}</button>
               ${markersHtml}
             </div>
           `;
@@ -5222,12 +5258,13 @@
       if (dayBar && dayBarText) {
         if (calSelectedDate) {
           dayBar.classList.remove('hidden');
-          dayBarText.textContent = `Gefiltert nach Tag: ${formatDateDE(calSelectedDate)}`;
+          dayBarText.textContent = `Ausgewählter Tag: ${formatDateDE(calSelectedDate)}`;
         } else {
           dayBar.classList.add('hidden');
         }
       }
 
+      renderPlanningDay(roleFilteredEvents, calendarTasks, today);
       // List below grid
       const list = document.getElementById('kalender-list');
       let listEvents = [...roleFilteredEvents];
@@ -5289,6 +5326,30 @@
 
     }
 
+    function shiftPlanningDay(delta) {
+      const d=new Date((calSelectedDate||localPlanningDate(new Date()))+'T12:00:00');
+      d.setDate(d.getDate()+delta); calSelectedDate=localPlanningDate(d);
+      calViewMonth=d.getMonth();calViewYear=d.getFullYear();renderKalender();syncPlanningUI();
+    }
+    function renderPlanningDay(events,tasks,today) {
+      const el=document.getElementById('planning-day'), day=calSelectedDate||today;
+      const evs=events.filter(e=>calendarCoversDate(e,day));
+      const ts=tasks.filter(t=>t.deadline.slice(0,10)===day);
+      const minutes=t=>{const [h,m]=t.split(':').map(Number);return h*60+m;};
+      const label=m=>String(Math.floor(m/60)).padStart(2,'0')+':'+String(m%60).padStart(2,'0');
+      const roles=calFilterRole==='all'?['Master','Daisy']:[calFilterRole];
+      const cols=roles.map(role=>{
+        const items=evs.filter(e=>getEventOwnerRole(e)===role);
+        const blocks=items.map(e=>({e,start:e.date<day?0:e.time?minutes(e.time):null,end:calendarEndDate(e)>day?1440:e.endTime?minutes(e.endTime):null}));
+        const boundaries=[0,1440,...blocks.flatMap(b=>b.start!==null&&b.end!==null&&b.end>b.start?[b.start,b.end]:[])].sort((a,b)=>a-b).filter((v,i,a)=>!i||v!==a[i-1]);
+        const ranges=boundaries.slice(0,-1).map((a,i)=>{const b=boundaries[i+1], busy=blocks.filter(x=>x.start!==null&&x.end!==null&&x.start<b&&x.end>a);return '<div class="p-2 rounded border border-slate-700 '+(busy.length?'bg-amber-500/10':'bg-emerald-500/5')+'"><span class="text-xs text-slate-400">'+label(a)+' – '+label(b)+'</span><div class="text-xs '+(busy.length?'text-white':'text-emerald-300')+'">'+(busy.length?busy.map(x=>escapeHtml(x.e.title)).join(' · '):'Kein Zeitblock eingetragen')+'</div></div>';}).join('');
+        const points=blocks.filter(b=>b.start===null||b.end===null||b.end<=b.start).map(b=>'<div class="text-xs p-2 border border-slate-700 rounded">'+(b.start===null?'Ohne Uhrzeit':label(b.start))+' · '+escapeHtml(b.e.title)+' (Dauer offen)</div>').join('');
+        const deadlines=ts.filter(t=>t.assignee===role).map(t=>'<button class="block text-left text-xs p-2 border border-slate-700 rounded w-full" data-day-task="'+escapeHtml(t.id)+'">✓ '+escapeHtml(t.deadline.slice(11,16))+' · '+escapeHtml(t.title)+'</button>').join('');
+        return '<div class="min-w-0 space-y-1"><h4 class="text-sm font-semibold '+(role==='Master'?'text-[#e5b55c]':'text-rose-300')+'">'+escapeHtml(getDisplayName(role))+'</h4>'+ranges+points+deadlines+'</div>';
+      }).join('');
+      el.innerHTML='<div class="flex items-center justify-between gap-2"><button class="p-2 rounded bg-slate-700" onclick="shiftPlanningDay(-1)">‹</button><strong class="text-sm">'+new Date(day+'T12:00:00').toLocaleDateString('de-DE',{weekday:'long',day:'numeric',month:'long',year:'numeric'})+'</strong><button class="p-2 rounded bg-slate-700" onclick="shiftPlanningDay(1)">›</button></div><div class="grid gap-2 '+(roles.length===2?'grid-cols-2':'grid-cols-1')+'">'+cols+'</div><p class="text-xs text-slate-400">Zeitpunkte ohne Dauer und Aufgabenfristen blockieren keine Zeitspanne.</p>';
+      el.querySelectorAll('[data-day-task]').forEach(b=>b.onclick=()=>openCalendarTask(b.dataset.dayTask));
+    }
     function openCalendarTask(id) {
       if (currentRole !== 'Master' && !hasPermission('aufgaben','visible')) return;
       switchTab('aufgaben');
@@ -5375,7 +5436,7 @@
       if (!hasPermission('kalender','add')) return;
       calendarEditingId = null;
       document.getElementById('cal-title').value = '';
-      document.getElementById('cal-date').value = calSelectedDate || '';
+      document.getElementById('cal-date').value = calSelectedDate || localPlanningDate(new Date());
       document.getElementById('cal-time').value = appState.basics.defaultEventTime || '18:00';
       document.getElementById('cal-end-date').value = '';
       document.getElementById('cal-end-time').value = '';
