@@ -3175,7 +3175,7 @@
           if (currentApp.options.databaseURL !== fbUrl) {
             currentApp.delete().then(() => {
               firebase.initializeApp({ ...FIREBASE_WEB_CONFIG, databaseURL: fbUrl });
-              attachFirebaseListener(safeRoomPath);
+              initFirebaseSync();
             });
             return;
           }
@@ -3190,9 +3190,9 @@
       }
     }
 
-    function initTestAppCheck() {
+    function initTestAppCheck(app = firebase.app()) {
       try {
-        firebase.appCheck().activate(
+        app.appCheck().activate(
           new firebase.appCheck.ReCaptchaEnterpriseProvider(APP_CHECK_SITE_KEY),
           true
         );
@@ -3236,28 +3236,70 @@
 
     // Firebase Auth is separate from the existing Dominion role/PIN UI.
     // A verified custom claim, not the selected UI role, establishes identity.
-    function initTestAuth() {
-      firebase.auth().onAuthStateChanged(async (user) => {
-        testAuthUser = null;
-        testAuthRole = null;
+    const roleApps = new Map();
+    const verifiedSessions = new Map();
+    let activeAuthApp = null, authBusy = false, authReady = false;
+    let pushRegistrationQueue = Promise.resolve();
+    function roleWriteBusy() {
+      return authBusy || pendingCollectionWrites.size || recoveryPending || deadlineTransactionPending || taskCreationPending || taskClosurePending || redemptionPending || mgmtDecisionPending || mgmtReadReceiptPending || developmentBalancePending || developmentImportPending || pushSaving;
+    }
+    function roleFirebaseApp() {
+      if (!activeAuthApp || !testAuthUser || testAuthRole !== currentRole) throw new Error('Keine passende Firebase-Sitzung.');
+      return activeAuthApp;
+    }
+    function activateRoleSession() {
+      const app = roleApps.get(currentRole);
+      const user = app && verifiedSessions.get(app);
+      const next = user && app.auth().currentUser === user ? app : null;
+      if (activeAuthApp !== next || testAuthUser !== (next ? user : null)) {
+        detachRoleSync();
+        activeAuthApp = next;
+        testAuthUser = next ? user : null;
+        testAuthRole = next ? currentRole : null;
         setPushPermissionStatus('Registrierung wird geprüft', false);
-        if (user) {
-          try {
-            const result = await user.getIdTokenResult();
-            const role = result.claims.dominionTestRole;
-            if (role === 'Master' || role === 'Daisy') {
-              testAuthUser = user;
-              testAuthRole = role;
-            }
-          } catch (error) {
-            console.warn('Firebase Auth claims could not be checked:', error);
-          }
+      }
+      updateTestAuthPanel();
+      updateAuthenticatedFirebaseSync();
+      loadPushPrefs();
+      registerTestPushToken().catch(e => console.warn('Push registration pending:', e.message));
+    }
+    async function initTestAuth() {
+      try {
+        const legacy = firebase.app();
+        const existing = await new Promise((resolve,reject) => {
+          const stop = legacy.auth().onAuthStateChanged(user => { stop(); resolve(user); }, reject);
+        });
+        let legacyRole = null;
+        if (existing) {
+          const claims = (await existing.getIdTokenResult()).claims;
+          if (['Master','Daisy'].includes(claims.dominionTestRole)) legacyRole = claims.dominionTestRole;
         }
-        updateTestAuthPanel();
-        updateAuthenticatedFirebaseSync();
-        loadPushPrefs();
-        if (testAuthUser && testAuthRole === currentRole) registerTestPushToken().catch(e => console.warn("Push registration pending:", e.message));
-      });
+        for (const role of ['Master','Daisy']) {
+          // Keep existing default session on this device; use named apps otherwise.
+          const name = 'dominion-test-auth-' + role;
+          const named = firebase.apps.find(a => a.name === name) || firebase.initializeApp(legacy.options,name);
+          initTestAppCheck(named);
+          // A stable mapping prevents a later logout from changing the session namespace.
+          const key = 'dominion-test-legacy-auth-role';
+          let owner = localStorage.getItem(key);
+          if (!owner && legacyRole) { owner = legacyRole; localStorage.setItem(key,owner); }
+          const app = owner === role ? legacy : named;
+          roleApps.set(role,app);
+          await app.auth().setPersistence(firebase.auth.Auth.Persistence.LOCAL);
+          let revision = 0;
+          app.auth().onIdTokenChanged(async user => {
+            const seq = ++revision;
+            let verified = null;
+            try { if (user && (await user.getIdTokenResult()).claims.dominionTestRole === role) verified = user; }
+            catch(e) { console.warn('Firebase role verification failed:',e); }
+            if (seq !== revision || app.auth().currentUser !== user) return;
+            if (verified) verifiedSessions.set(app,verified); else verifiedSessions.delete(app);
+            if (currentRole === role && !authBusy) activateRoleSession();
+          });
+        }
+        authReady = true;
+        activateRoleSession();
+      } catch(e) { console.warn('Firebase session initialization failed:',e); updateSyncIndicator(false); }
     }
 
     function updateTestAuthPanel() {
@@ -3268,7 +3310,7 @@
       el.innerHTML = `
         <div class="rounded-xl border border-slate-700 bg-slate-900/60 p-4 space-y-3">
           <div class="font-semibold text-sm text-slate-100">🔐 Firebase-Anmeldung</div>
-          <p class="text-xs text-slate-400">Zusätzliche sichere Anmeldung für die spätere Push-Zustellung. Deine normale Dominion-Anmeldung bleibt unverändert.</p>
+          <p class="text-xs text-slate-400">Firebase-Sitzungen bleiben je Rolle auf diesem Browser gespeichert. Rollenwechsel meldet Firebase nicht ab. Auf gemeinsam genutzten Geräten nur eigene Konten speichern.</p>
           <p class="text-xs ${matched ? 'text-emerald-300' : 'text-amber-300'}">${matched ? '✓ Firebase-Konto für ' + currentRole + ' bestätigt' : otherRole ? 'Anderes Firebase-Konto angemeldet (' + testAuthRole + '). Bitte abmelden und das Konto für ' + currentRole + ' verwenden.' : 'Für ' + currentRole + ' noch nicht bei Firebase angemeldet.'}</p>
           ${matched || otherRole ? '<button type="button" onclick="signOutTestFirebase()" class="px-3 py-2 text-xs rounded-lg bg-white/10 text-slate-100">Firebase-Konto abmelden</button>' : `
             <form onsubmit="signInTestFirebase(event)" class="space-y-2">
@@ -3284,21 +3326,21 @@
       event.preventDefault();
       const email = document.getElementById('test-auth-email')?.value.trim();
       const password = document.getElementById('test-auth-password')?.value;
-      if (!email || !password || !currentRole) return;
+      if (!email || !password || !currentRole || !authReady || authBusy) return;
       const intendedRole = currentRole;
+      const app = roleApps.get(intendedRole);
+      authBusy = true;
       try {
-        const credential = await firebase.auth().signInWithEmailAndPassword(email, password);
+        const credential = await app.auth().signInWithEmailAndPassword(email, password);
         const claims = (await credential.user.getIdTokenResult(true)).claims;
         if (claims.dominionTestRole !== intendedRole) {
-          await firebase.auth().signOut();
-          testAuthUser = null;
-          testAuthRole = null;
+          await app.auth().signOut();
+          verifiedSessions.delete(app);
           updateTestAuthPanel();
           showToast('Dieses Firebase-Konto gehört nicht zur Rolle ' + intendedRole + '.', 'error');
           return;
         }
-        testAuthUser = credential.user;
-        testAuthRole = intendedRole;
+        verifiedSessions.set(app,credential.user);
         updateTestAuthPanel();
         showToast('Firebase-Anmeldung für ' + intendedRole + ' erfolgreich!', 'success');
         registerTestPushToken().catch(e => console.warn('Push registration pending:', e.message));
@@ -3306,24 +3348,36 @@
         console.warn('Firebase sign-in failed:', error.code || error.message);
         showToast('Firebase-Anmeldung fehlgeschlagen. E-Mail und Passwort prüfen.', 'error');
       } finally {
+        authBusy = false;
+        activateRoleSession();
         const passwordInput = document.getElementById('test-auth-password');
         if (passwordInput) passwordInput.value = '';
       }
     }
 
     async function signOutTestFirebase() {
+      if (roleWriteBusy() || !activeAuthApp) return;
+      const app = activeAuthApp;
+      authBusy = true;
       try {
-        await firebase.auth().signOut();
-        testAuthUser = null;
-        testAuthRole = null;
-        updateTestAuthPanel();
-        showToast('Firebase-Konto abgemeldet.');
-      } catch (error) {
-        showToast('Firebase-Abmeldung fehlgeschlagen.', 'error');
-      }
+        await app.auth().signOut();
+        verifiedSessions.delete(app);
+        showToast('Firebase-Konto dieser Rolle abgemeldet.');
+      } catch(error) { showToast('Firebase-Abmeldung fehlgeschlagen.','error'); }
+      finally { authBusy = false; activateRoleSession(); }
     }
 
-    async function registerTestPushToken() {
+    function registerTestPushToken() {
+      const role = currentRole;
+      const app = activeAuthApp;
+      const run = pushRegistrationQueue.catch(()=>{}).then(()=> {
+        if (role !== currentRole || app !== activeAuthApp) return;
+        return registerActivePushToken();
+      });
+      pushRegistrationQueue = run;
+      return run;
+    }
+    async function registerActivePushToken() {
       if (!testAuthUser || testAuthRole !== currentRole || !currentRole ||
           !('Notification' in window) || Notification.permission !== 'granted') return;
       const registrationRole = currentRole;
@@ -3333,7 +3387,7 @@
         prefs.pushDeviceId = Array.from(crypto.getRandomValues(new Uint8Array(24)), b => b.toString(16).padStart(2,'0')).join('');
         saveDevicePrefs(prefs);
       }
-      const result = await firebase.app().functions('europe-west1').httpsCallable('registerTestPushDevice')({
+      const result = await roleFirebaseApp().functions('europe-west1').httpsCallable('registerTestPushDevice')({
         token:prefs.fcmToken,deviceId:prefs.pushDeviceId
       });
       if (result.data?.registered !== true) throw new Error('Test-Geräteregistrierung nicht bestätigt.');
@@ -3406,17 +3460,17 @@
 
     // Database listeners start only after Firebase has restored a verified session.
     // This avoids permission errors when the database rules become restrictive.
+    function detachRoleSync() {
+      if (firebaseDbRef) { firebaseDbRef.off(); firebaseDbRef.child('chatV2').off(); }
+      firebaseDbRef = null;
+      productionRoomLoaded = false;
+      lastRemoteState = null;
+      lastRemoteRawState = null;
+      updateSyncIndicator(false);
+    }
     function updateAuthenticatedFirebaseSync() {
-      const verified = !!testAuthUser && ['Master', 'Daisy'].includes(testAuthRole);
-      if (!verified) {
-        productionRoomLoaded = false;
-        lastRemoteState = null;
-        if (firebaseDbRef) { firebaseDbRef.off(); firebaseDbRef.child('chatV2').off(); }
-        firebaseDbRef = null;
-        updateSyncIndicator(false);
-        return;
-      }
-      if (firebaseRoomPathPending) attachFirebaseListener(firebaseRoomPathPending);
+      if (!testAuthUser || testAuthRole !== currentRole || !currentRole) { detachRoleSync(); return; }
+      if (!firebaseDbRef && firebaseRoomPathPending) attachFirebaseListener(firebaseRoomPathPending);
     }
 
     function attachFirebaseListener(safeRoomPath) {
@@ -3424,13 +3478,15 @@
         firebaseDbRef.off();
         firebaseDbRef.child('chatV2').off();
       }
-      firebaseDbRef = firebase.database().ref('rooms/' + safeRoomPath);
+      firebaseDbRef = roleFirebaseApp().database().ref('rooms/' + safeRoomPath);
+      const listenerRef = firebaseDbRef;
       productionRoomLoaded = false;
       lastRemoteState = null;
       lastRemoteRawState = null;
       appState.chat = []; // The previous chat is explicitly excluded from this release.
       saveStateLocalOnly();
       firebaseDbRef.child('chatV2').on('child_added', snapshot => {
+        if (firebaseDbRef !== listenerRef) return;
         const message = snapshot.val();
         if (!message || !message.id) return;
         appState.chat = mergeChatMessages(appState.chat, [message]);
@@ -3443,6 +3499,7 @@
       });
 
       firebaseDbRef.on('value', (snapshot) => {
+        if (firebaseDbRef !== listenerRef) return;
         const remoteData = snapshot.val();
         if (!remoteData) {
           // Fail closed: NEVER initialize an absent production room with default data.
@@ -3880,14 +3937,14 @@
 
       refreshAllUI();
       switchTab(startTab);
-      updateTestAuthPanel();
-      loadPushPrefs();
-      registerTestPushToken().catch(e => console.warn('Push registration pending:', e.message));
+      activateRoleSession();
     }
 
     function logoutRole() {
+      if (roleWriteBusy()) { showToast('Bitte laufende Speicherung abwarten.','error'); return; }
       masterToDaisyBypass = currentRole === 'Master';
       currentRole = null;
+      activateRoleSession();
       setPushPermissionStatus('Nicht geprüft', false);
       document.getElementById('main-app').classList.add('hidden');
       document.getElementById('bottom-nav').classList.add('hidden');
@@ -3915,7 +3972,7 @@
       if (!testAuthUser || testAuthRole !== currentRole) return;
       const role = currentRole;
       try {
-        const response = await firebase.app().functions('europe-west1').httpsCallable('getTestPushPreferences')();
+        const response = await roleFirebaseApp().functions('europe-west1').httpsCallable('getTestPushPreferences')();
         if (role !== currentRole || role !== testAuthRole) return;
         pushPrefs = response.data.preferences; pushPrefsRole = role;
       } catch(e) { console.warn('Push-Einstellungen:',e); }
@@ -3938,10 +3995,11 @@
     async function savePushPref(key,enabled) {
       if (!Object.prototype.hasOwnProperty.call(PUSH_EVENTS,key) || pushSaving ||
           !testAuthUser || testAuthRole !== currentRole || pushPrefsRole !== currentRole) return;
+      const savingRole = currentRole;
       pushSaving = true; renderPushPrefs();
       try {
-        const response = await firebase.app().functions('europe-west1').httpsCallable('setTestPushPreference')({event:key,enabled:!!enabled});
-        if (response.data?.saved && testAuthRole === currentRole && pushPrefsRole === currentRole) pushPrefs[key]=!!enabled;
+        const response = await roleFirebaseApp().functions('europe-west1').httpsCallable('setTestPushPreference')({event:key,enabled:!!enabled});
+        if (response.data?.saved && savingRole === currentRole && testAuthRole === currentRole && pushPrefsRole === currentRole) pushPrefs[key]=!!enabled;
       } catch(e) { console.warn('Push-Einstellung nicht gespeichert:',e); showToast('Push-Einstellung nicht gespeichert.','error'); }
       finally { pushSaving=false; renderPushPrefs(); }
     }
