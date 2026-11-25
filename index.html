@@ -624,7 +624,7 @@
               <div class="flex items-center justify-between gap-3"><h3 id="cal-dialog-title" class="text-lg font-semibold text-white">Neuen Termin anlegen</h3><button type="button" onclick="closeCalendarDialog()" aria-label="Schließen" class="px-3 py-1 rounded-lg bg-slate-800 text-slate-300">✕</button></div>
               <div id="kalender-add-box" class="space-y-3">
                 <label class="block text-xs text-slate-300">Titel<input id="cal-title" type="text" placeholder="Titel des Termins..." class="w-full mt-1 px-3.5 py-2.5 text-sm" /></label>
-                <label class="block text-xs text-slate-300">Für wen?<select id="cal-owner" onchange="updateCalendarPointsVisibility()" class="w-full mt-1 px-3 py-2.5 text-sm"><option value="Master">♛ Master</option><option value="Daisy">🌸 Daisy</option><option value="both">♛🌸 Beide</option></select></label>
+                <label class="block text-xs text-slate-300">Für wen?<select id="cal-owner" onchange="updateCalendarPointsVisibility();refreshCalendarConflictWarning()" class="w-full mt-1 px-3 py-2.5 text-sm"><option value="Master">♛ Master</option><option value="Daisy">🌸 Daisy</option><option value="both">♛🌸 Beide</option></select></label>
                 <div class="grid grid-cols-1 sm:grid-cols-2 gap-3">
                   <label class="text-xs text-slate-300">Startdatum<input id="cal-date" type="date" onchange="if(!calendarEditingId)calendarDefaultEnd()" class="w-full mt-1 px-3 py-2.5 text-sm" /></label>
                   <label class="text-xs text-slate-300">Startzeit (optional)<input id="cal-time" type="time" onchange="if(!calendarEditingId)calendarDefaultEnd()" class="w-full mt-1 px-3 py-2.5 text-sm" /></label>
@@ -3031,7 +3031,8 @@
       if (typeof value === 'object') {
         const result = {};
         for (const key of Object.keys(value).sort()) {
-          if (value[key] !== undefined) result[key] = canonicalRemoteValue(value[key]);
+          const child = canonicalRemoteValue(value[key]);
+          if (child !== null) result[key] = child;
         }
         return result;
       }
@@ -3118,15 +3119,16 @@
               return;
             }
             return desired;
-          }, (error, committed) => {
+          }, (error, committed, committedSnapshot) => {
             if (error || !committed) {
               failWrite(error);
               return;
             }
             pendingCollectionWrites.delete(key);
             if (roomRef !== firebaseDbRef) return;
-            if (lastRemoteState) lastRemoteState[key] = sanitizeForFirebase(desired);
-            if (lastRemoteRawState) lastRemoteRawState[key] = sanitizeForFirebase(desired);
+            const committedValue = committedSnapshot.val();
+            if (lastRemoteState) lastRemoteState[key] = sanitizeForFirebase(committedValue);
+            if (lastRemoteRawState) lastRemoteRawState[key] = sanitizeForFirebase(committedValue);
             if (!sameRemoteValue(appState[key], desired)) persistState();
           }, false);
         }).catch(failWrite);
@@ -5391,6 +5393,14 @@
       if(!conflicts.length) return true;
       calendarConflictMessage('Terminkonflikt – dieser Zeitraum ist bereits belegt.\n'+conflicts.map(e=>getDisplayName(getEventOwnerRole(e))+': '+e.title+' · '+formatDateDE(e.date)+' '+(e.time||'')+' – '+formatDateDE(e.endDate||e.date)+' '+(e.endTime||'Tagesende')).join('\n')+'\nBitte Start- oder Endzeit anpassen.');
       return false;
+    }
+    function refreshCalendarConflictWarning() {
+      if(document.getElementById('cal-conflict').classList.contains('hidden')) return;
+      const data={date:document.getElementById('cal-date').value,time:document.getElementById('cal-time').value,endDate:document.getElementById('cal-end-date').value,endTime:document.getElementById('cal-end-time').value};
+      const owner=document.getElementById('cal-owner').value;
+      const ev=appState.kalender.find(x=>x.id===calendarEditingId);
+      const targets=ev?(ev.groupId&&document.getElementById('cal-edit-pair').checked?appState.kalender.filter(x=>x.groupId===ev.groupId):[ev]):[];
+      calendarCheckConflict(data,ev?targets.map(getEventOwnerRole):owner==='both'?['Master','Daisy']:[owner],targets.map(x=>x.id));
     }
     function calendarDefaultEnd() {
       const date=document.getElementById('cal-date').value, time=document.getElementById('cal-time').value;
