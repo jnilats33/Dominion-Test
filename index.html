@@ -3247,6 +3247,18 @@
       if (!activeAuthApp || !testAuthUser || testAuthRole !== currentRole) throw new Error('Keine passende Firebase-Sitzung.');
       return activeAuthApp;
     }
+    // Callable Functions may request an FCM token from their own Firebase app.
+    // Configure that instance with the project-page worker before invoking them.
+    async function prepareRoleCallable(app) {
+      if ('Notification' in window && Notification.permission === 'granted' &&
+          'serviceWorker' in navigator && firebase.messaging.isSupported()) {
+        const registration = swRegistration || await navigator.serviceWorker.register('./firebase-messaging-sw.js');
+        swRegistration = registration;
+        await app.messaging().getToken({vapidKey: FCM_VAPID_KEY, serviceWorkerRegistration: registration});
+      }
+      if (app !== roleFirebaseApp()) throw new Error('Rolle während Firebase-Aufruf gewechselt.');
+      return app.functions('europe-west1');
+    }
     function activateRoleSession() {
       const app = roleApps.get(currentRole);
       const user = app && verifiedSessions.get(app);
@@ -3387,7 +3399,7 @@
         prefs.pushDeviceId = Array.from(crypto.getRandomValues(new Uint8Array(24)), b => b.toString(16).padStart(2,'0')).join('');
         saveDevicePrefs(prefs);
       }
-      const result = await roleFirebaseApp().functions('europe-west1').httpsCallable('registerTestPushDevice')({
+      const result = await (await prepareRoleCallable(roleFirebaseApp())).httpsCallable('registerTestPushDevice')({
         token:prefs.fcmToken,deviceId:prefs.pushDeviceId
       });
       if (result.data?.registered !== true) throw new Error('Test-Geräteregistrierung nicht bestätigt.');
@@ -3972,7 +3984,7 @@
       if (!testAuthUser || testAuthRole !== currentRole) return;
       const role = currentRole;
       try {
-        const response = await roleFirebaseApp().functions('europe-west1').httpsCallable('getTestPushPreferences')();
+        const response = await (await prepareRoleCallable(roleFirebaseApp())).httpsCallable('getTestPushPreferences')();
         if (role !== currentRole || role !== testAuthRole) return;
         pushPrefs = response.data.preferences; pushPrefsRole = role;
       } catch(e) { console.warn('Push-Einstellungen:',e); }
@@ -3998,7 +4010,7 @@
       const savingRole = currentRole;
       pushSaving = true; renderPushPrefs();
       try {
-        const response = await roleFirebaseApp().functions('europe-west1').httpsCallable('setTestPushPreference')({event:key,enabled:!!enabled});
+        const response = await (await prepareRoleCallable(roleFirebaseApp())).httpsCallable('setTestPushPreference')({event:key,enabled:!!enabled});
         if (response.data?.saved && savingRole === currentRole && testAuthRole === currentRole && pushPrefsRole === currentRole) pushPrefs[key]=!!enabled;
       } catch(e) { console.warn('Push-Einstellung nicht gespeichert:',e); showToast('Push-Einstellung nicht gespeichert.','error'); }
       finally { pushSaving=false; renderPushPrefs(); }
