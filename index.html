@@ -6,7 +6,7 @@
   <meta name="theme-color" content="#0f1117" />
   <meta name="apple-mobile-web-app-capable" content="yes" />
   <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
-  <title>Dominion TEST – v2.11</title>
+  <title>Dominion TEST – v2.14</title>
   <script src="https://cdn.tailwindcss.com"></script>
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
@@ -282,15 +282,15 @@
             <h3 class="font-display text-sm font-bold text-[#e5b55c] flex items-center gap-2">
               <span>🚀</span> Update-News: Dominion <span id="dashboard-version-news"></span>
             </h3>
-            <span class="text-[10px] px-2 py-0.5 rounded-full bg-[#c9973e]/15 text-[#e5b55c] border border-[#c9973e]/30">Version 2.11</span>
+            <span class="text-[10px] px-2 py-0.5 rounded-full bg-[#c9973e]/15 text-[#e5b55c] border border-[#c9973e]/30">Version 2.14</span>
           </div>
           <details id="dashboard-news-current" class="group border-t border-slate-800 pt-3" open>
             <summary class="cursor-pointer select-none flex items-center justify-between gap-2 text-xs font-semibold text-[#e5b55c] hover:text-white">
               <span>📰 Aktuelles Update – Änderungen anzeigen</span>
               <span class="group-open:rotate-180 transition-transform" aria-hidden="true">▾</span>
             </summary>
-            <div class="mt-3 space-y-3">
-          <p class="text-[11px] text-slate-400">Stand: 22.11.2026 · Detaillierter Änderungsüberblick für die Test-App.</p>
+            <div class="mt-3 space-y-3"><div class="text-xs text-slate-300"><h4 class="font-semibold text-[#e5b55c]">Kalender – Tagesgruppen und Navigation</h4><p>Datumsgruppen in der chronologischen Liste; Kalenderpiktogramme springen zum passenden Eintrag mit Hervorhebung.</p></div>
+          <p class="text-[11px] text-slate-400">Stand: 25.11.2026 · Version 2.14 TEST</p>
           <div class="text-xs text-slate-300"><h4 class="font-semibold text-[#e5b55c] mb-1">Aufgaben – neues Pop-up</h4><ul class="list-disc pl-4 space-y-1"><li>Aufgaben werden jetzt in einem Pop-up im Design des Kalenderdialogs angelegt.</li><li>Auch bestehende Aufgaben werden im selben Pop-up bearbeitet.</li><li>Deadline, Erinnerung, Zuständigkeit, Aufgabenart und Punkte bleiben erhalten.</li></ul></div>
           <div class="space-y-3 text-xs text-slate-300 leading-relaxed">
             <div><h4 class="font-semibold text-[#e5b55c] mb-1">Aufgaben – Erinnerungen</h4><ul class="list-disc pl-4 space-y-1"><li>Neues Dropdown zur Auswahl des Erinnerungs-Vorlaufs beim Anlegen von Aufgaben.</li><li>Auswahl: keine Erinnerung, 30 Minuten, 1 Stunde, 4 Stunden, 1 Tag, 3 Tage oder 2 Wochen vor der Deadline.</li><li>Gewählte Erinnerung wird mit der Aufgabe gespeichert und beim späteren Bearbeiten wieder angezeigt.</li></ul></div>
@@ -1105,7 +1105,7 @@
      * DOMINION APP v2.3 - STATE, MIGRATION & FCM PUSH ENGINE
      * =========================================================================
      */
-    const APP_VERSION = '2.11';
+    const APP_VERSION = '2.14';
     const STORAGE_KEY = 'dominion_test_state_20261114';
     const LEGACY_KEYS = [];
     const DEVICE_PREFS_KEY = 'dominion_test_device_prefs_20261114';
@@ -5105,6 +5105,20 @@
       renderKalender();
     }
 
+    function jumpCalendarList(iso, role, kind) {
+      calSelectedDate = null;
+      if (role && calFilterRole !== 'all' && calFilterRole !== role) calFilterRole = role;
+      renderKalender();
+      const list = document.getElementById('kalender-list');
+      const target = [...list.querySelectorAll('[data-cal-entry]')].find(el =>
+        el.dataset.calStart <= iso && el.dataset.calEnd >= iso &&
+        (!role || el.dataset.calRole === role) && (!kind || el.dataset.calEntry === kind));
+      if (!target) return;
+      target.closest('details').open = true;
+      target.scrollIntoView({behavior:'smooth',block:'center'});
+      if (target.animate) target.animate([{outline:'2px solid #e5b55c',backgroundColor:'#c9973e33'},{outline:'2px solid transparent',backgroundColor:'transparent'}],{duration:2200});
+    }
+
     function renderKalender() {
       const canAdd = hasPermission('kalender', 'add');
       const canDelete = hasPermission('kalender', 'delete');
@@ -5190,14 +5204,14 @@
             cellBg = 'bg-white/[0.05]';
           }
 
-          const marker = (role,kind,count) => count ? `<span class="flex items-center gap-0.5 min-w-0 leading-none ${role==='Master'?'text-[#e5b55c]':'text-rose-300'}" title="${role} · ${kind==='task'?'Aufgaben':'Termine'}: ${count}"><svg viewBox="0 0 16 16" width="11" height="11" class="shrink-0" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><rect x="2" y="3" width="12" height="11" rx="2"/>${kind==='task'?'<path d="m5 8 2 2 4-4"/>':'<path d="M5 1v4M11 1v4M2 7h12"/>'}</svg><span class="truncate">${count}</span></span>` : '<span></span>';
+          const marker = (role,kind,count) => count ? `<button type="button" onclick="event.stopPropagation();jumpCalendarList(\'${iso}\',\'${role}\',\'${kind}\')" class="flex items-center gap-0.5 min-w-0 leading-none ${role==='Master'?'text-[#e5b55c]':'text-rose-300'}" title="${role} · ${kind==='task'?'Aufgaben':'Termine'}: ${count}"><svg viewBox="0 0 16 16" width="11" height="11" class="shrink-0" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><rect x="2" y="3" width="12" height="11" rx="2"/>${kind==='task'?'<path d="m5 8 2 2 4-4"/>':'<path d="M5 1v4M11 1v4M2 7h12"/>'}</svg><span class="truncate">${count}</span></button>` : '<span></span>';
           const markersHtml = '<div class="grid grid-cols-2 gap-x-1 gap-y-1 w-full text-[10px]">'+['Master','Daisy'].map(role=>marker(role,'event',role==='Master'?masterEvents.length:daisyEvents.length)+marker(role,'task',calendarTasks.filter(t=>t.assignee===role&&t.deadline.slice(0,10)===iso).length)).join('')+'</div>';
           cellsHtml += `
-            <button type="button" onclick="selectCalendarDate('${iso}')"
+            <div role="group"
                     class="h-14 sm:h-16 p-1 rounded-xl border ${cellBorder} ${cellBg} flex flex-col justify-between text-left transition overflow-hidden">
-              <span class="text-[11px] font-semibold ${isToday ? 'text-[#e5b55c]' : 'text-slate-300'}">${day}</span>
+              <button type="button" onclick="jumpCalendarList('${iso}')" class="w-full text-left text-[11px] font-semibold ${isToday ? 'text-[#e5b55c]' : 'text-slate-300'}">${day}</button>
               ${markersHtml}
-            </button>
+            </div>
           `;
         }
         gridEl.innerHTML = cellsHtml;
@@ -5247,13 +5261,13 @@
           </div>
         `;
       };
-      const entries = listEvents.map(ev => ({date:ev.date,time:ev.time || '',group:calendarCoversDate(ev,today)?'today':calendarHasEnded(ev)?'past':'future',html:renderEvent(ev)}));
+      const entries = listEvents.map(ev => ({date:ev.date,end:calendarEndDate(ev),role:getEventOwnerRole(ev),time:ev.time || '',group:calendarCoversDate(ev,today)?'today':calendarHasEnded(ev)?'past':'future',html:renderEvent(ev)}));
       for (const t of calendarTasks) {
         const date = t.deadline.slice(0,10), time = t.deadline.slice(11,16);
         if (calSelectedDate && date !== calSelectedDate) continue;
         const late = taskStatus(t) === 'overdue';
         const gold = t.assignee === 'Master';
-        entries.push({date,time,group:date===today?'today':date<today?'past':'future',task:true,html:`<button type="button" data-calendar-task="${escapeHtml(t.id)}" class="w-full text-left p-3.5 rounded-xl border ${late?'border-rose-500 text-rose-300':'border-slate-600 text-white'} bg-white/[0.03] flex justify-between gap-2"><span><span class="block text-xs ${gold?'text-[#e5b55c]':'text-rose-300'}">${escapeHtml(getDisplayName(t.assignee))} · ${formatDateDE(date)} bis ${escapeHtml(time)} Uhr</span><span class="font-semibold text-sm">${escapeHtml(t.title)}</span>${late?' <span class="text-xs">Überfällig</span>':''}</span><span class="self-start rounded px-2 py-1 text-black ${gold?'bg-[#c9973e]':'bg-rose-400'}">✓</span></button>`});
+        entries.push({date,end:date,role:t.assignee,time,group:date===today?'today':date<today?'past':'future',task:true,html:`<button type="button" data-calendar-task="${escapeHtml(t.id)}" class="w-full text-left p-3.5 rounded-xl border ${late?'border-rose-500 text-rose-300':'border-slate-600 text-white'} bg-white/[0.03] flex justify-between gap-2"><span><span class="block text-xs ${gold?'text-[#e5b55c]':'text-rose-300'}">${escapeHtml(getDisplayName(t.assignee))} · ${formatDateDE(date)} bis ${escapeHtml(time)} Uhr</span><span class="font-semibold text-sm">${escapeHtml(t.title)}</span>${late?' <span class="text-xs">Überfällig</span>':''}</span><span class="self-start rounded px-2 py-1 text-black ${gold?'bg-[#c9973e]':'bg-rose-400'}">✓</span></button>`});
       }
       const storageKey = 'dominion-test-calendar-sections-v1-'+currentRole;
       let saved = {};
@@ -5261,7 +5275,14 @@
       list.innerHTML = '<h3 class="font-semibold text-sm">Termine &amp; Aufgabenfristen</h3>'+[['today','Heute'],['future','Bevorstehend'],['past','Vergangen']].map(([key,label])=>{
         const rows = entries.filter(e=>e.group===key).sort((a,b)=>(key==='past'?-1:1)*(a.date+a.time).localeCompare(b.date+b.time));
         const open = calSelectedDate || (saved[key] ?? key!=='past');
-        return `<details data-calendar-section="${key}" ${open?'open':''} class="rounded-xl border border-slate-700 p-2"><summary class="cursor-pointer font-semibold text-sm p-1">${label} (${rows.length})</summary><div class="space-y-2 mt-2">${rows.map(e=>key==='past'&&!e.task?'<div class="grayscale opacity-60">'+e.html+'</div>':e.html).join('')||'<p class="text-xs text-slate-500 p-2">Keine Einträge</p>'}</div></details>`;
+        const days = new Map();
+        for (const e of rows) {
+          const day = key === 'today' ? today : e.date;
+          if (!days.has(day)) days.set(day, []);
+          days.get(day).push(e);
+        }
+        const grouped = [...days].map(([day,items]) => `<div class="flex gap-2 border-t border-slate-700 pt-2"><div class="w-16 shrink-0 text-xs text-[#e5b55c] font-semibold">${formatDateDE(day)}<div class="text-slate-400 font-normal">${new Date(day+'T12:00:00').toLocaleDateString('de-DE',{weekday:'short'})}</div></div><div class="flex-1 min-w-0 space-y-2">${items.map(e=>`<div data-cal-entry="${e.task?'task':'event'}" data-cal-start="${escapeHtml(e.date)}" data-cal-end="${escapeHtml(e.end)}" data-cal-role="${escapeHtml(e.role)}" class="rounded-xl ${key==='past'&&!e.task?'grayscale opacity-60':''}">${e.html}</div>`).join('')}</div></div>`).join('');
+        return `<details data-calendar-section="${key}" ${open?'open':''} class="rounded-xl border border-slate-700 p-2"><summary class="cursor-pointer font-semibold text-sm p-1">${label} (${rows.length})</summary><div class="space-y-2 mt-2">${grouped||'<p class="text-xs text-slate-500 p-2">Keine Einträge</p>'}</div></details>`;
       }).join('');
       list.querySelectorAll('[data-calendar-task]').forEach(el=>{el.onclick=()=>openCalendarTask(el.dataset.calendarTask);});
       list.querySelectorAll('[data-calendar-section]').forEach(el=>{el.ontoggle=()=>{if(calSelectedDate)return;try{const state=JSON.parse(localStorage.getItem(storageKey)||'{}')||{};state[el.dataset.calendarSection]=el.open;localStorage.setItem(storageKey,JSON.stringify(state));}catch{}};});
