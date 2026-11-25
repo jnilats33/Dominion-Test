@@ -3875,6 +3875,7 @@
       switchTab(startTab);
       updateTestAuthPanel();
       loadPushPrefs();
+      registerTestPushToken().catch(e => console.warn('Push registration pending:', e.message));
     }
 
     function logoutRole() {
