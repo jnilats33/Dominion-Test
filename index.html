@@ -3968,6 +3968,7 @@
       finally { pushSaving=false; renderPushPrefs(); }
     }
     function canChangeEntry(category, action, entry) {
+      if (category === 'aufgaben' && currentRole === 'Master') return true;
       if (entry?.masterLocked === true) return false;
       if (currentRole === 'Master') return true;
       if (!entry || !['edit','delete'].includes(action)) return false;
@@ -6165,6 +6166,14 @@
       } catch(error) { showToast('Abschluss nicht ausgeführt: '+error.message,'error'); return false; }
       finally { taskClosurePending = false; }
     }
+    function toggleTaskMasterLock(id) {
+      if (currentRole !== 'Master' || testAuthRole !== 'Master' || !testAuthUser || !productionRoomLoaded || productionSyncConflict || isApplyingRemoteUpdate || recoveryPending || pendingCollectionWrites.size || taskClosurePending || taskCreationPending || deadlineTransactionPending || calendarWritePending) return showToast('Sperre derzeit nicht änderbar. Synchronisation prüfen.','error');
+      const task = appState.mgmt.aufgaben.find(t => t.id === id);
+      if (!task) return;
+      task.masterLocked = !task.masterLocked;
+      logActivity('hat Aufgabe '+(task.masterLocked?'gesperrt':'entsperrt')+': „'+task.title+'“','aufgaben','aufgaben',id);
+      persistState(); refreshAllUI();
+    }
     function renderTasks() {
       migrateLegacyTasks();
       const permitted = currentRole === 'Master' || hasPermission('aufgaben','visible');
@@ -6184,8 +6193,9 @@
           ? ((currentRole === 'Daisy' && t.assignee === 'Daisy') && !['done','rejected'].includes(status) ? '<button onclick="completeMasterTask(\'' + t.id + '\')" class="px-3 py-1 rounded-lg bg-emerald-900/40 text-emerald-200">Erledigt</button>' : '')
           : (currentRole === 'Daisy' && ['open','overdue'].includes(status) ? '<button onclick="reportTask(\'' + t.id + '\')" class="px-3 py-1 rounded-lg bg-amber-900/40 text-amber-200">Erledigt melden</button>' : '');
         const reviewButtons = '';
+        const lock = currentRole === 'Master' ? '<button class="px-2 py-1 rounded-lg bg-white/10" title="'+(t.masterLocked?'Aufgabe entsperren':'Aufgabe sperren')+'" onclick="toggleTaskMasterLock(\''+t.id+'\')">'+(t.masterLocked?'🔒':'🔓')+'</button>' : (t.masterLocked?'<span title="Durch Master gesperrt">🔒</span>':'');
         const edit = canChangeEntry('aufgaben','edit',t) && status === 'open' ? '<button onclick="editTask(\'' + t.id + '\')" class="px-3 py-1 rounded-lg bg-white/10">Bearbeiten</button>' : '';
-        return '<div tabindex="-1" id="task-card-' + escapeHtml(t.id) + '" class="focus:ring-2 focus:ring-amber-400 rounded-xl border ' + style[2] + ' bg-white/[0.03] p-3 space-y-2"><div class="flex flex-wrap justify-between gap-2"><strong class="text-sm">' + escapeHtml(t.title) + '</strong>' + badgeMark("aufgaben",t.id) + '<span class="text-xs ' + style[1] + '">' + style[0] + '</span></div><p class="text-xs text-slate-400">' + escapeHtml(t.desc || '') + '</p><div class="text-xs text-slate-400">Für: ' + escapeHtml(getDisplayName(t.assignee || 'Master')) + ' · Frist: ' + (t.deadline ? new Date(t.deadline).toLocaleString('de-DE') : 'Keine (Altbestand)') + '</div>' + (t.assignee === 'Daisy' ? '<div class="text-xs text-slate-400">+' + rewardAmount(t.plusPoints) + ' / −' + rewardAmount(t.minusPoints) + ' Punkte pro Fristversäumnis</div>' : '') + (t.reportedAt ? '<div class="text-xs text-amber-300">Gemeldet: ' + new Date(t.reportedAt).toLocaleString('de-DE') + '</div>' : '') + (t.closureComment ? '<p class="text-xs text-amber-200">Kommentar zum Abschluss: ' + escapeHtml(t.closureComment) + '</p>' : '') + '<div class="flex flex-wrap gap-2 text-xs">' + buttons + reviewButtons + edit + (currentRole === 'Master' ? '<button onclick="openTaskClosure(\'' + t.id + '\')" class="px-3 py-1 rounded-lg bg-white/10"' + (['done','rejected'].includes(status) ? ' title="Abschluss korrigieren" aria-label="Abschluss korrigieren">✎' : '>Aufgabe entscheiden') + '</button>' : '') + '</div></div>';
+        return '<div tabindex="-1" id="task-card-' + escapeHtml(t.id) + '" class="focus:ring-2 focus:ring-amber-400 rounded-xl border ' + style[2] + ' bg-white/[0.03] p-3 space-y-2"><div class="flex flex-wrap justify-between gap-2"><strong class="text-sm">' + escapeHtml(t.number ? t.number+' · '+t.title : t.title) + '</strong>' + lock + badgeMark("aufgaben",t.id) + '<span class="text-xs ' + style[1] + '">' + style[0] + '</span></div><p class="text-xs text-slate-400">' + escapeHtml(t.desc || '') + '</p><div class="text-xs text-slate-400">Für: ' + escapeHtml(getDisplayName(t.assignee || 'Master')) + ' · Frist: ' + (t.deadline ? new Date(t.deadline).toLocaleString('de-DE') : 'Keine (Altbestand)') + '</div>' + (t.assignee === 'Daisy' ? '<div class="text-xs text-slate-400">+' + rewardAmount(t.plusPoints) + ' / −' + rewardAmount(t.minusPoints) + ' Punkte pro Fristversäumnis</div>' : '') + (t.reportedAt ? '<div class="text-xs text-amber-300">Gemeldet: ' + new Date(t.reportedAt).toLocaleString('de-DE') + '</div>' : '') + (t.closureComment ? '<p class="text-xs text-amber-200">Kommentar zum Abschluss: ' + escapeHtml(t.closureComment) + '</p>' : '') + ((t.history||[]).some(h=>h.event==='Frist verlängert') ? '<details class="text-xs text-slate-400"><summary>Fristverlauf</summary>'+t.history.filter(h=>h.event==='Frist verlängert').map(h=>'<p class="mt-1">'+escapeHtml(h.previousDeadline?new Date(h.previousDeadline).toLocaleString('de-DE'):'Keine')+' → '+escapeHtml(new Date(h.deadline).toLocaleString('de-DE'))+(h.comment?' · '+escapeHtml(h.comment):'')+'</p>').join('')+'</details>':'') + '<div class="flex flex-wrap gap-2 text-xs">' + buttons + reviewButtons + edit + (currentRole === 'Master' ? '<button onclick="openTaskClosure(\'' + t.id + '\')" class="px-3 py-1 rounded-lg bg-white/10"' + (['done','rejected'].includes(status) ? ' title="Abschluss korrigieren" aria-label="Abschluss korrigieren">✎' : '>Aufgabe entscheiden') + '</button>' : '') + '</div></div>';
       }).join('') || '<p class="text-xs text-slate-400">Noch keine Aufgaben vorhanden.</p>';
     }
     // Selection is local and provisional until an RTDB ledger transaction commits.
