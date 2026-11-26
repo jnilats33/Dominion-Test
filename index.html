@@ -6,7 +6,7 @@
   <meta name="theme-color" content="#0f1117" />
   <meta name="apple-mobile-web-app-capable" content="yes" />
   <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
-  <title>Dominion TEST – v2.14</title>
+  <title>Dominion TEST – v2.15</title>
   <script src="https://cdn.tailwindcss.com"></script>
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
@@ -282,7 +282,7 @@
             <h3 class="font-display text-sm font-bold text-[#e5b55c] flex items-center gap-2">
               <span>🚀</span> Update-News: Dominion <span id="dashboard-version-news"></span>
             </h3>
-            <span class="text-[10px] px-2 py-0.5 rounded-full bg-[#c9973e]/15 text-[#e5b55c] border border-[#c9973e]/30">Version 2.14</span>
+            <span class="text-[10px] px-2 py-0.5 rounded-full bg-[#c9973e]/15 text-[#e5b55c] border border-[#c9973e]/30">Version 2.15</span>
           </div>
           <details id="dashboard-news-current" class="group border-t border-slate-800 pt-3" open>
             <summary class="cursor-pointer select-none flex items-center justify-between gap-2 text-xs font-semibold text-[#e5b55c] hover:text-white">
@@ -290,7 +290,7 @@
               <span class="group-open:rotate-180 transition-transform" aria-hidden="true">▾</span>
             </summary>
             <div class="mt-3 space-y-3"><div class="text-xs text-slate-300"><h4 class="font-semibold text-[#e5b55c]">Planung – Übersicht, Termine, Aufgaben und Rituale</h4><p>Rollenbezogene Kollisionsprüfung beim Anlegen und Bearbeiten; neue Termine mit 30 Minuten vorbelegt.</p><p>Datumsgruppen in der chronologischen Liste; Kalenderpiktogramme springen zum passenden Eintrag mit Hervorhebung.</p></div>
-          <p class="text-[11px] text-slate-400">Stand: 25.11.2026 · Version 2.14 TEST</p>
+          <p class="text-[11px] text-slate-400">Stand: 25.11.2026 · Version 2.15 TEST</p>
           <div class="text-xs text-slate-300"><h4 class="font-semibold text-[#e5b55c] mb-1">Aufgaben – neues Pop-up</h4><ul class="list-disc pl-4 space-y-1"><li>Aufgaben werden jetzt in einem Pop-up im Design des Kalenderdialogs angelegt.</li><li>Auch bestehende Aufgaben werden im selben Pop-up bearbeitet.</li><li>Deadline, Erinnerung, Zuständigkeit, Aufgabenart und Punkte bleiben erhalten.</li></ul></div>
           <div class="space-y-3 text-xs text-slate-300 leading-relaxed">
             <div><h4 class="font-semibold text-[#e5b55c] mb-1">Aufgaben – Erinnerungen</h4><ul class="list-disc pl-4 space-y-1"><li>Neues Dropdown zur Auswahl des Erinnerungs-Vorlaufs beim Anlegen von Aufgaben.</li><li>Auswahl: keine Erinnerung, 30 Minuten, 1 Stunde, 4 Stunden, 1 Tag, 3 Tage oder 2 Wochen vor der Deadline.</li><li>Gewählte Erinnerung wird mit der Aufgabe gespeichert und beim späteren Bearbeiten wieder angezeigt.</li></ul></div>
@@ -1107,7 +1107,7 @@
      * DOMINION APP v2.3 - STATE, MIGRATION & FCM PUSH ENGINE
      * =========================================================================
      */
-    const APP_VERSION = '2.14';
+    const APP_VERSION = '2.15';
     const STORAGE_KEY = 'dominion_test_state_20261114';
     const LEGACY_KEYS = [];
     const DEVICE_PREFS_KEY = 'dominion_test_device_prefs_20261114';
@@ -3191,7 +3191,7 @@
     let activeAuthApp = null, authBusy = false, authReady = false;
     let pushRegistrationQueue = Promise.resolve();
     function roleWriteBusy() {
-      return authBusy || pendingCollectionWrites.size || recoveryPending || deadlineTransactionPending || taskCreationPending || taskClosurePending || redemptionPending || mgmtDecisionPending || mgmtReadReceiptPending || developmentBalancePending || developmentImportPending || pushSaving;
+      return authBusy || calendarWritePending || pendingCollectionWrites.size || recoveryPending || deadlineTransactionPending || taskCreationPending || taskClosurePending || redemptionPending || mgmtDecisionPending || mgmtReadReceiptPending || developmentBalancePending || developmentImportPending || pushSaving;
     }
     function roleFirebaseApp() {
       if (!activeAuthApp || !testAuthUser || testAuthRole !== currentRole) throw new Error('Keine passende Firebase-Sitzung.');
@@ -5379,20 +5379,59 @@
       }
       return {title,date,time,endDate,endTime,owner,pointsPlus,pointsMinus,reminderMinutes};
     }
-    function addCalendarEvent() {
-      if (!hasPermission('kalender', 'add')) return;
-      const data = calendarFormData();
-      if (!data) return;
-      const groupId = 'calgroup-' + Date.now() + '-' + Math.random().toString(36).slice(2,7);
-      const owners = data.owner === 'both' ? ['Master','Daisy'] : [data.owner];
-      if (!calendarCheckConflict(data,owners)) return;
-      for (const owner of owners) {
-        const ev = {id:'cal-' + Date.now() + '-' + Math.random().toString(36).slice(2,9),title:data.title,date:data.date,time:data.time,endDate:data.endDate,endTime:data.endTime,reminderMinutes:data.reminderMinutes,owner,createdBy:currentRole,groupId:data.owner === 'both' ? groupId : null,pointsPlus:owner === 'Daisy' && currentRole === 'Master' ? data.pointsPlus : 0,pointsMinus:owner === 'Daisy' && currentRole === 'Master' ? data.pointsMinus : 0,confirmed:false};
-        appState.kalender.push(ev);
-        logActivity('hat Termin angelegt: „' + data.title + '“', 'kalender', null, ev.id);
+    let calendarWritePending = false;
+    async function commitCalendar(data, original, pair) {
+      if(calendarWritePending || !testAuthUser || testAuthRole!==currentRole || !firebaseDbRef || !productionRoomLoaded || productionSyncConflict || pendingCollectionWrites.size || isApplyingRemoteUpdate || recoveryPending || taskClosurePending || taskCreationPending || deadlineTransactionPending || mgmtDecisionPending || location.hostname!=='jnilats33.github.io' || !location.pathname.startsWith('/Dominion-Test/') || firebaseRoomPathPending!==DEVELOPMENT_TEST_ROOM) {
+        calendarConflictMessage('Speichern derzeit nicht möglich. Bitte Live-Synchronisation prüfen.'); return false;
       }
-      closeCalendarDialog();
-      persistState(); refreshAllUI(); showToast(owners.length === 2 ? 'Zwei verknüpfte Termine gespeichert.' : 'Termin gespeichert.');
+      const role=currentRole, room=firebaseDbRef, timestamp=Date.now(), actorName=getDisplayName(role);
+      const groupId='calgroup-'+timestamp+'-'+Math.random().toString(36).slice(2,9);
+      const owners=data.owner==='both'?['Master','Daisy']:[data.owner];
+      const localTargets=original?(pair?appState.kalender.filter(x=>x.groupId===original.groupId):[original]):[];
+      const expected=sanitizeForFirebase(localTargets);
+      const ids=owners.map((o,i)=>groupId+'-'+i);
+      let reason='Serverstand geändert. Bitte erneut versuchen.';
+      calendarWritePending=true;
+      const button=document.getElementById('cal-save-btn');button.disabled=true;
+      try {
+        await room.once('value');
+        if(room!==firebaseDbRef || role!==currentRole || productionSyncConflict) throw Error('Synchronisationszustand geändert.');
+        const committed=await new Promise((resolve,reject)=>room.transaction(current=>{
+          if(!current || room!==firebaseDbRef || role!==currentRole) return;
+          const next=sanitizeForFirebase(current), events=next.kalender||[], perm=next.permissions?.kalender;
+          if(!Array.isArray(events) || !Array.isArray(next.activityFeed||[])) return;
+          const allowed=e=>!e.masterLocked&&(role==='Master'||(perm?.visible&&(typeof perm[e.createdBy===role?'editOwn':'editOthers']==='boolean'?perm[e.createdBy===role?'editOwn':'editOthers']:perm.edit)));
+          let targets=[];
+          if(original){
+            targets=pair?events.filter(e=>e.groupId===original.groupId):events.filter(e=>e.id===original.id);
+            if(!targets.length||!sameRemoteValue(targets,expected)){reason='Termin wurde inzwischen geändert. Bitte Dialog neu öffnen.';return;}
+            if(!targets.every(allowed)){reason='Keine Bearbeitungsberechtigung für alle ausgewählten Termine.';return;}
+          }else if(role!=='Master'&&(!perm?.visible||!perm.add)){reason='Keine Berechtigung zum Anlegen.';return;}
+          const roles=original?targets.map(getEventOwnerRole):owners;
+          const span=calendarInterval(data);
+          const conflicts=span?events.filter(e=>!targets.some(t=>t.id===e.id)&&roles.includes(getEventOwnerRole(e))&&(()=>{const x=calendarInterval(e);return x&&span[0]<x[1]&&x[0]<span[1];})()):[];
+          if(conflicts.length){reason='Terminkonflikt auf dem Server: '+conflicts.map(e=>e.title+' · '+e.date+' '+(e.time||'')+' – '+(e.endTime||'Tagesende')).join('; ');return;}
+          if(original){
+            targets.forEach(x=>{Object.assign(x,{title:data.title,date:data.date,time:data.time,endDate:data.endDate,endTime:data.endTime,reminderMinutes:data.reminderMinutes,lastEditedBy:role});if(x.owner==='Daisy'&&role==='Master'&&!x.confirmed&&x.id===original.id){x.pointsPlus=data.pointsPlus;x.pointsMinus=data.pointsMinus;delete x.points;}});
+          }else{
+            targets=owners.map((owner,i)=>({id:ids[i],title:data.title,date:data.date,time:data.time,endDate:data.endDate,endTime:data.endTime,reminderMinutes:data.reminderMinutes,owner,createdBy:role,groupId:owners.length===2?groupId:null,pointsPlus:owner==='Daisy'&&role==='Master'?data.pointsPlus:0,pointsMinus:owner==='Daisy'&&role==='Master'?data.pointsMinus:0,confirmed:false}));
+            events.push(...targets);
+          }
+          next.kalender=events;
+          next.activityFeed=[...targets.map((e,i)=>({id:groupId+'-act-'+i,actorRole:role,actorName,action:(original?'hat Termin geändert: „':'hat Termin angelegt: „')+data.title+'“',targetTab:'kalender',permissionKey:'kalender',targetItemId:e.id,timestamp})),...(next.activityFeed||[])].slice(0,100);
+          return next;
+        },(error,ok)=>error?reject(error):resolve(ok),false));
+        if(!committed){calendarConflictMessage(reason);return false;}
+        return true;
+      }catch(e){calendarConflictMessage('Speichern nicht bestätigt: '+e.message);return false;}
+      finally{calendarWritePending=false;button.disabled=false;}
+    }
+    async function addCalendarEvent() {
+      if(!hasPermission('kalender','add'))return;
+      const data=calendarFormData();if(!data)return;
+      const owners=data.owner==='both'?['Master','Daisy']:[data.owner];
+      if(!calendarCheckConflict(data,owners))return;
+      if(await commitCalendar(data,null,false)){closeCalendarDialog();showToast('Termin gespeichert.');}
     }
     function editCalendarEvent(id) {
       const ev = appState.kalender.find(x => x.id === id);
@@ -5450,6 +5489,7 @@
       document.getElementById('cal-title').focus();
     }
     function closeCalendarDialog() {
+      if(calendarWritePending)return;
       calendarEditingId = null;
       document.getElementById('cal-dialog').classList.add('hidden');
       document.getElementById('cal-reminder').value = '';
@@ -5457,20 +5497,14 @@
     }
     function cancelCalendarEdit() { closeCalendarDialog(); }
     function submitCalendarDialog() { if (calendarEditingId) saveCalendarEdit(); else addCalendarEvent(); }
-    function saveCalendarEdit() {
-      if (!calendarEditingId) return;
-      const ev = appState.kalender.find(x => x.id === calendarEditingId);
-      const data = calendarFormData();
-      if (!ev || !data || !canChangeEntry('kalender','edit',ev)) return;
-      const pair = !!ev.groupId && document.getElementById('cal-edit-pair').checked;
-      const targets = pair ? appState.kalender.filter(x => x.groupId === ev.groupId) : [ev];
-      if (!targets.every(x => canChangeEntry('kalender','edit',x))) { showToast('Keine Berechtigung für alle verknüpften Termine.', 'error'); return; }
-      if (!calendarCheckConflict(data,targets.map(getEventOwnerRole),targets.map(x=>x.id))) return;
-      targets.forEach(x => {
-        x.title=data.title; x.date=data.date; x.time=data.time; x.endDate=data.endDate; x.endTime=data.endTime; x.reminderMinutes=data.reminderMinutes; x.lastEditedBy=currentRole;
-        if (x.owner === 'Daisy' && currentRole === 'Master' && !x.confirmed && x.id === ev.id) { x.pointsPlus=data.pointsPlus; x.pointsMinus=data.pointsMinus; delete x.points; }
-      });
-      closeCalendarDialog(); persistState(); refreshAllUI(); showToast('Termin aktualisiert.');
+    async function saveCalendarEdit() {
+      const ev=appState.kalender.find(x=>x.id===calendarEditingId),data=calendarFormData();
+      if(!ev||!data||!canChangeEntry('kalender','edit',ev))return;
+      const pair=!!ev.groupId&&document.getElementById('cal-edit-pair').checked;
+      const targets=pair?appState.kalender.filter(x=>x.groupId===ev.groupId):[ev];
+      if(!targets.every(x=>canChangeEntry('kalender','edit',x))){calendarConflictMessage('Keine Berechtigung für alle verknüpften Termine.');return;}
+      if(!calendarCheckConflict(data,targets.map(getEventOwnerRole),targets.map(x=>x.id)))return;
+      if(await commitCalendar(data,ev,pair)){closeCalendarDialog();showToast('Termin aktualisiert.');}
     }
     function confirmCalendarEvent(id, outcome) {
       if (currentRole !== 'Master' || !['fulfilled','unfulfilled'].includes(outcome)) return;
