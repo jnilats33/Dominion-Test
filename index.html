@@ -624,6 +624,8 @@
               <div class="flex items-center justify-between gap-3"><h3 id="cal-dialog-title" class="text-lg font-semibold text-white">Neuen Termin anlegen</h3><button type="button" onclick="closeCalendarDialog()" aria-label="Schließen" class="px-3 py-1 rounded-lg bg-slate-800 text-slate-300">✕</button></div>
               <div id="kalender-add-box" class="space-y-3">
                 <label class="block text-xs text-slate-300">Titel<input id="cal-title" type="text" placeholder="Titel des Termins..." class="w-full mt-1 px-3.5 py-2.5 text-sm" /></label>
+                <label class="block text-xs text-slate-300">Ort<input id="cal-location" type="text" placeholder="Ort oder Adresse (optional)" class="w-full mt-1 px-3.5 py-2.5 text-sm" /></label>
+                <label class="block text-xs text-slate-300">Notizen<textarea id="cal-notes" rows="3" placeholder="Weitere Informationen (optional)" class="w-full mt-1 px-3.5 py-2.5 text-sm"></textarea></label>
                 <label class="block text-xs text-slate-300">Für wen?<select id="cal-owner" onchange="updateCalendarPointsVisibility();refreshCalendarConflictWarning()" class="w-full mt-1 px-3 py-2.5 text-sm"><option value="Master">♛ Master</option><option value="Daisy">🌸 Daisy</option><option value="both">♛🌸 Beide</option></select></label>
                 <div class="grid grid-cols-1 sm:grid-cols-2 gap-3">
                   <label class="text-xs text-slate-300">Startdatum<input id="cal-date" type="date" onchange="if(!calendarEditingId)calendarDefaultEnd()" class="w-full mt-1 px-3 py-2.5 text-sm" /></label>
@@ -5234,7 +5236,7 @@
                 <span class="text-[10px] font-semibold px-2 py-0.5 rounded-md border ${pillClass}">
                   ${isMasterEv ? '♛' : '🌸'} ${escapeHtml(ownerName)}
                 </span>
-                <span class="font-semibold text-sm text-white">${escapeHtml(ev.title)}${badgeMark("kalender",ev.id)}</span>
+                <span class="font-semibold text-sm text-white">${escapeHtml(ev.title)}${badgeMark("kalender",ev.id)}</span>${ev.location ? `<div class="text-xs text-slate-300 break-words">📍 ${escapeHtml(ev.location)}</div>` : ""}${ev.notes ? `<div class="text-xs text-slate-400 whitespace-pre-wrap break-words">${escapeHtml(ev.notes)}</div>` : ""}
               </div>
               <div class="text-xs text-slate-400 mt-1">📅 ${calendarRangeLabel(ev)}</div>${ownerRole === 'Daisy' && ((ev.pointsPlus != null ? Number(ev.pointsPlus) : Math.max(0, Number(ev.points || 0))) || (ev.pointsMinus != null ? Number(ev.pointsMinus) : Math.max(0,-Number(ev.points || 0)))) ? `<div class="text-xs mt-1 ${ev.confirmed ? 'text-emerald-300' : 'text-amber-300'}">${ev.confirmed ? ('✓ ' + (ev.confirmOutcome === 'unfulfilled' ? 'Nicht erfüllt' : 'Erfüllt')) : '⏳ Vorgemerkt'}: +${ev.pointsPlus != null ? ev.pointsPlus : Math.max(0,Number(ev.points || 0))} / −${ev.pointsMinus != null ? ev.pointsMinus : Math.max(0,-Number(ev.points || 0))} Punkte</div>` : ''}
             </div>
@@ -5377,7 +5379,7 @@
         calendarConflictMessage('Bitte eine gültige Zeitspanne angeben oder Enddatum und Endzeit für einen punktuellen Termin entfernen.');
         return null;
       }
-      return {title,date,time,endDate,endTime,owner,pointsPlus,pointsMinus,reminderMinutes};
+      return {title,date,time,endDate,endTime,owner,pointsPlus,pointsMinus,reminderMinutes,location:document.getElementById('cal-location').value.trim(),notes:document.getElementById('cal-notes').value.trim()};
     }
     let calendarWritePending = false;
     async function commitCalendar(data, original, pair) {
@@ -5412,9 +5414,9 @@
           const conflicts=span?events.filter(e=>!targets.some(t=>t.id===e.id)&&roles.includes(getEventOwnerRole(e))&&(()=>{const x=calendarInterval(e);return x&&span[0]<x[1]&&x[0]<span[1];})()):[];
           if(conflicts.length){reason='Terminkonflikt auf dem Server: '+conflicts.map(e=>e.title+' · '+e.date+' '+(e.time||'')+' – '+(e.endTime||'Tagesende')).join('; ');return;}
           if(original){
-            targets.forEach(x=>{Object.assign(x,{title:data.title,date:data.date,time:data.time,endDate:data.endDate,endTime:data.endTime,reminderMinutes:data.reminderMinutes,lastEditedBy:role});if(x.owner==='Daisy'&&role==='Master'&&!x.confirmed&&x.id===original.id){x.pointsPlus=data.pointsPlus;x.pointsMinus=data.pointsMinus;delete x.points;}});
+            targets.forEach(x=>{Object.assign(x,{title:data.title,date:data.date,time:data.time,endDate:data.endDate,endTime:data.endTime,reminderMinutes:data.reminderMinutes,location:data.location,notes:data.notes,lastEditedBy:role});if(x.owner==='Daisy'&&role==='Master'&&!x.confirmed&&x.id===original.id){x.pointsPlus=data.pointsPlus;x.pointsMinus=data.pointsMinus;delete x.points;}});
           }else{
-            targets=owners.map((owner,i)=>({id:ids[i],title:data.title,date:data.date,time:data.time,endDate:data.endDate,endTime:data.endTime,reminderMinutes:data.reminderMinutes,owner,createdBy:role,groupId:owners.length===2?groupId:null,pointsPlus:owner==='Daisy'&&role==='Master'?data.pointsPlus:0,pointsMinus:owner==='Daisy'&&role==='Master'?data.pointsMinus:0,confirmed:false}));
+            targets=owners.map((owner,i)=>({id:ids[i],title:data.title,date:data.date,time:data.time,endDate:data.endDate,endTime:data.endTime,reminderMinutes:data.reminderMinutes,location:data.location,notes:data.notes,owner,createdBy:role,groupId:owners.length===2?groupId:null,pointsPlus:owner==='Daisy'&&role==='Master'?data.pointsPlus:0,pointsMinus:owner==='Daisy'&&role==='Master'?data.pointsMinus:0,confirmed:false}));
             events.push(...targets);
           }
           next.kalender=events;
@@ -5439,6 +5441,8 @@
       calendarConflictMessage('');
       calendarEditingId = id;
       document.getElementById('cal-title').value = ev.title;
+      document.getElementById('cal-location').value = ev.location || '';
+      document.getElementById('cal-notes').value = ev.notes || '';
       document.getElementById('cal-date').value = ev.date;
       document.getElementById('cal-time').value = ev.time || '';
       document.getElementById('cal-end-date').value = ev.endDate || '';
@@ -5471,6 +5475,8 @@
       if (!hasPermission('kalender','add')) return;
       calendarEditingId = null;
       document.getElementById('cal-title').value = '';
+      document.getElementById('cal-location').value = '';
+      document.getElementById('cal-notes').value = '';
       document.getElementById('cal-date').value = calSelectedDate || localPlanningDate(new Date());
       document.getElementById('cal-time').value = appState.basics.defaultEventTime || '18:00';
       document.getElementById('cal-end-date').value = '';
