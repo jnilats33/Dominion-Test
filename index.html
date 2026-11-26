@@ -5942,7 +5942,12 @@
       if (new Date(deadline).getTime() <= Date.now()) return showToast('Deadline muss in der Zukunft liegen.', 'error');
       const tasks = appState.mgmt.aufgaben;
       const task = editingTaskId ? tasks.find(t => t.id === editingTaskId) : null;
-      if (editingTaskId && (!task || task.status !== 'open' || !canChangeEntry('aufgaben','edit',task))) return;
+      if (editingTaskId) {
+        if (!task) return showToast('Die Aufgabe wurde zwischenzeitlich entfernt. Deine Änderungen wurden nicht gespeichert.','error');
+        if (currentRole !== 'Master' && task.masterLocked) return showToast('Die Aufgabe wurde zwischenzeitlich durch Master gesperrt. Deine Änderungen wurden nicht gespeichert.','error');
+        if (task.status !== 'open') return showToast('Der Aufgabenstatus wurde zwischenzeitlich geändert. Deine Änderungen wurden nicht gespeichert.','error');
+        if (!canChangeEntry('aufgaben','edit',task)) return showToast('Du hast keine Bearbeitungsberechtigung mehr. Deine Änderungen wurden nicht gespeichert.','error');
+      }
       const values = { title, desc, assignee, deadline, reminderMinutes, taskKind: kind, plusPoints: kind === 'reward' ? rewardAmount(document.getElementById('task-plus').value) : 0, minusPoints: kind === 'reward' ? rewardAmount(document.getElementById('task-minus').value) : 0 };
       if (task) {
         Object.assign(task, values);
