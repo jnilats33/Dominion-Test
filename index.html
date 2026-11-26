@@ -4675,6 +4675,7 @@
                 </div>
                 <p class="text-xs sm:text-sm text-slate-200 mt-1 break-words">${escapeHtml(item.action)}</p>
               </div>
+              ${currentRole === 'Master' && item.eventType === 'taskWithdrawn' && appState.taskTrash?.[item.withdrawnTaskId]?.withdrawnAt === item.timestamp ? `<button class="shrink-0 px-3 py-1.5 rounded-lg border border-amber-500/40 text-amber-200 text-xs" title="Aufgabe wiederherstellen" onclick="restoreWithdrawnTask('${escapeHtml(item.withdrawnTaskId)}')">↶ Rückgängig</button>` : ''}
               <button onclick="jumpToTarget('${item.targetTab}', ${item.targetSubCategory ? `'${item.targetSubCategory}'` : 'null'}, ${item.targetItemId ? `'${item.targetItemId}'` : 'null'})"
                       class="shrink-0 px-3 py-1.5 rounded-lg bg-[#c9973e]/15 hover:bg-[#c9973e] text-[#e5b55c] hover:text-[#0f1117] border border-[#c9973e]/40 text-xs font-semibold transition">
                 Ansehen →
@@ -6084,7 +6085,7 @@
       dialog.innerHTML = `<section class="w-full max-w-lg rounded-2xl bg-slate-900 border border-slate-600 p-5 space-y-4">
         <h2 class="font-bold text-lg">Aufgabe entscheiden</h2>
         <p class="text-sm text-slate-300"></p>
-        <label class="block"><input type="radio" name="task-closure" value="done" checked> 🟢 Aufgabe erledigt</label>
+        <label class="block"><input type="radio" name="task-closure" value="done"> 🟢 Aufgabe erledigt</label>
         <label class="block"><input type="radio" name="task-closure" value="rejected"> 🔴 Aufgabe nicht erledigt</label>
         <label class="block" data-extend-choice><input type="radio" name="task-closure" value="extend"> 🟡 Frist verlängern</label><label data-extend-date hidden class="text-sm">Neue Frist <input type="datetime-local" class="w-full rounded-lg bg-slate-800 p-2"></label><label class="block"><input type="radio" name="task-closure" value="withdraw"> ⚪ Aufgabe zurückziehen</label>
         <label class="block text-sm">Kommentar an Daisy (optional)<textarea class="w-full rounded-lg bg-slate-800 p-2 mt-2" rows="3" maxlength="2000"></textarea></label>
@@ -6101,12 +6102,14 @@
       dialog.querySelector('[data-extend-choice]').hidden = !extendAllowed;
       dialog.querySelector('input[value="extend"]').disabled = !extendAllowed;
       const dateInput = dialog.querySelector('input[type="datetime-local"]');
-      const choice = () => dialog.querySelector('input[name="task-closure"]:checked').value;
-      const summary = () => { dialog.querySelector('[data-extend-date]').hidden = choice() !== 'extend'; dialog.querySelector('[data-summary]').textContent = ({done:'Belohnungspunkte werden gebucht. Bisherige Minuspunkte bleiben erhalten.',rejected:'Keine Belohnungspunkte und keine neuen Minuspunkte. Bisherige Minuspunkte bleiben erhalten.',extend:'Aufgabe erneut öffnen; bisherige Minuspunkte bleiben erhalten.',withdraw:'Aufgabe entfernen und sämtliche zugehörigen Punktebuchungen rückgängig machen.'})[choice()]; };
+      const choice = () => dialog.querySelector('input[name="task-closure"]:checked')?.value;
+      const summary = () => { dialog.querySelector('[data-extend-date]').hidden = choice() !== 'extend'; dialog.querySelector('[data-summary]').textContent = ({done:'Belohnungspunkte werden gebucht. Bisherige Minuspunkte bleiben erhalten.',rejected:'Keine Belohnungspunkte und keine neuen Minuspunkte. Bisherige Minuspunkte bleiben erhalten.',extend:'Aufgabe erneut öffnen; bisherige Minuspunkte bleiben erhalten.',withdraw:'Aufgabe entfernen und sämtliche zugehörigen Punktebuchungen rückgängig machen.'})[choice()] || 'Bitte eine Entscheidung auswählen.'; dialog.querySelector('[data-submit]').disabled = !choice(); };
       dialog.addEventListener('change',summary); summary();
       dialog.querySelector('[data-cancel]').onclick = () => { if (!taskClosurePending) dialog.remove(); };
       dialog.querySelector('[data-submit]').onclick = async () => {
         const button = dialog.querySelector('[data-submit]');
+        if (!choice()) return;
+        if (choice() === 'withdraw' && !confirm('Aufgabe '+task.itemNumber+' zurückziehen und zugehörige Punktebuchungen rückgängig machen?')) return;
         button.disabled = true;
         try { if (await closeTaskAtomically(id,choice(),dialog.querySelector('textarea').value.trim(),dateInput.value)) dialog.remove(); }
         finally { button.disabled = false; }
@@ -6150,6 +6153,9 @@
           }
           const label = {done:'Aufgabe erledigt',rejected:'Aufgabe nicht erledigt',withdraw:'Aufgabe zurückgezogen',extend:'Frist verlängert'}[decision];
           if (decision === 'withdraw') {
+            const trash = next.taskTrash ||= {};
+            if (trash[id]) return;
+            trash[id] = {task:sanitizeForFirebase(task),ledger:removed,withdrawnAt:timestamp};
             next.mgmt.aufgaben = tasks.filter(t => t.id !== id);
           } else if (decision === 'extend') {
             if (['done','rejected'].includes(taskStatus(task)) || Date.parse(deadline) <= timestamp || (task.deadline && Date.parse(deadline) <= Date.parse(task.deadline))) return;
@@ -6169,6 +6175,42 @@
         if (!result) throw new Error('Serverstand geändert; keine Buchung vorgenommen.');
         showToast('Aufgabenabschluss auf TEST-Server gespeichert.'); return true;
       } catch(error) { showToast('Abschluss nicht ausgeführt: '+error.message,'error'); return false; }
+      finally { taskClosurePending = false; }
+    }
+    async function restoreWithdrawnTask(id) {
+      if (currentRole !== 'Master' || testAuthRole !== 'Master' || !testAuthUser || taskClosurePending ||
+          location.hostname !== 'jnilats33.github.io' || !location.pathname.startsWith('/Dominion-Test/') ||
+          firebaseRoomPathPending !== DEVELOPMENT_TEST_ROOM || !firebaseDbRef || !productionRoomLoaded ||
+          productionSyncConflict || isApplyingRemoteUpdate || recoveryPending || roleWriteBusy() || !lastRemoteRawState)
+        return showToast('Wiederherstellung gesperrt: Synchronisation zuerst prüfen.','error');
+      const saved = appState.taskTrash?.[id];
+      if (!saved || !confirm('Aufgabe '+saved.task.itemNumber+' einschließlich Punktebuchungen wiederherstellen?')) return;
+      taskClosurePending = true;
+      const roomRef = firebaseDbRef, timestamp = Date.now();
+      try {
+        const baseline = (await roomRef.once('value')).val();
+        if (!baseline || roomRef !== firebaseDbRef || productionSyncConflict || pendingCollectionWrites.size ||
+            !['mgmt','mgmtCounters','rewardLedger','deletedRewardKeys','activityFeed','taskTrash'].every(k=>sameRemoteValue(baseline[k] ?? null,lastRemoteRawState[k] ?? null))) throw new Error('Serverstand geändert.');
+        const result = await new Promise((resolve,reject)=>roomRef.transaction(current=>{
+          if (!current || !sameRemoteValue(current,baseline)) return;
+          const next = sanitizeForFirebase(current);
+          const record = next.taskTrash?.[id], task = record?.task;
+          if (!task || task.id !== id || record.withdrawnAt !== saved.withdrawnAt || !/^A-[0-9]+$/.test(task.itemNumber) ||
+              Number(task.itemNumber.slice(2)) > Number(next.mgmtCounters?.aufgaben)) return;
+          const tasks = next.mgmt?.aufgaben || [], ledger = next.rewardLedger || [], rows = record.ledger || [];
+          if (!Array.isArray(tasks) || !Array.isArray(ledger) || !Array.isArray(rows) ||
+              tasks.some(t=>t.id===id || t.itemNumber===task.itemNumber) ||
+              rows.some(row=>!row.id?.startsWith('task:'+id+':') || ledger.some(x=>x.id===row.id) || (next.deletedRewardKeys||[]).includes(row.id)) ||
+              new Set(rows.map(row=>row.id)).size!==rows.length) return;
+          next.mgmt.aufgaben = [task,...tasks];
+          next.rewardLedger = [...ledger,...rows];
+          delete next.taskTrash[id];
+          next.activityFeed = [{id:'task-restore-'+id+'-'+timestamp,actorRole:'Master',actorName:'Master',action:'Aufgabe wiederhergestellt: „'+task.title+'“',targetTab:'aufgaben',permissionKey:'aufgaben',targetItemId:id,timestamp},...(next.activityFeed||[])].slice(0,100);
+          return next;
+        },(error,committed)=>error?reject(error):resolve(committed),false));
+        if (!result) throw new Error('Konflikt oder bereits wiederhergestellt.');
+        showToast('Aufgabe wiederhergestellt.');
+      } catch(error) { showToast('Wiederherstellung nicht ausgeführt: '+error.message,'error'); }
       finally { taskClosurePending = false; }
     }
     function toggleTaskMasterLock(id) {
