@@ -558,7 +558,7 @@
         </div>
       </div>
       <!-- ==================== 3. KALENDER ==================== -->
-      <div id="planning-nav" class="hidden grid grid-cols-4 gap-1 mb-3"><button type="button" data-plan="overview" onclick="openPlanning('overview')" class="relative rounded-xl border border-slate-700 p-2 text-xs"><span class="block text-lg">☷</span>Übersicht</button><button type="button" data-plan="events" onclick="openPlanning('events')" class="relative rounded-xl border border-slate-700 p-2 text-xs"><span class="block text-lg">📅</span>Termine</button><button type="button" data-plan="tasks" onclick="openPlanning('tasks')" class="relative rounded-xl border border-slate-700 p-2 text-xs"><span class="block text-lg">✅</span>Aufgaben</button><button type="button" data-plan="rituals" onclick="openPlanning('rituals')" class="relative rounded-xl border border-slate-700 p-2 text-xs"><span class="block text-lg">↻</span>Rituale</button></div>
+      <div id="planning-nav" class="hidden grid grid-cols-5 gap-1 mb-3"><button type="button" data-plan="overview" onclick="openPlanning('overview')" class="relative rounded-xl border border-slate-700 p-2 text-xs"><span class="block text-lg">☷</span>Übersicht</button><button type="button" data-plan="events" onclick="openPlanning('events')" class="relative rounded-xl border border-slate-700 p-2 text-xs"><span class="block text-lg">📅</span>Termine</button><button type="button" data-plan="tasks" onclick="openPlanning('tasks')" class="relative rounded-xl border border-slate-700 p-2 text-xs"><span class="block text-lg">✅</span>Aufgaben</button><button type="button" data-plan="rituals" onclick="openPlanning('rituals')" class="relative rounded-xl border border-slate-700 p-2 text-xs"><span class="block text-lg">↻</span>Rituale</button><button type="button" data-plan="shopping" onclick="openPlanning('shopping')" class="relative rounded-xl border border-slate-700 p-2 text-xs"><span class="block text-lg">🛒</span>Einkauf</button></div>
       <section id="tab-kalender" class="hidden space-y-4 animate-fade">
         <div class="glass-card rounded-2xl p-5 space-y-4">
           <div class="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
@@ -789,6 +789,8 @@
             <button type="button" role="tab" aria-selected="false" aria-controls="profile-panel-nachgefragt" id="profile-tab-nachgefragt" data-profile-tab="nachgefragt" onclick="openProfileSection('nachgefragt')" class="shrink-0 px-3 py-2 rounded-xl text-xs font-medium whitespace-nowrap bg-white/5 text-slate-300">❔ Nachgefragt</button>
             <button type="button" role="tab" aria-selected="false" aria-controls="profile-panel-chronik" id="profile-tab-chronik" data-profile-tab="chronik" onclick="openProfileSection('chronik')" class="shrink-0 px-3 py-2 rounded-xl text-xs font-medium whitespace-nowrap bg-white/5 text-slate-300">📖 Chronik</button>
             <button type="button" role="tab" aria-selected="false" aria-controls="profile-panel-statistik" id="profile-tab-statistik" data-profile-tab="statistik" onclick="openProfileSection('statistik')" class="shrink-0 px-3 py-2 rounded-xl text-xs font-medium whitespace-nowrap bg-white/5 text-slate-300">📊 Statistik</button>
+            <button type="button" role="tab" aria-selected="false" aria-controls="profile-panel-galerie" id="profile-tab-galerie" data-profile-tab="galerie" onclick="openProfileSection('galerie')" class="shrink-0 px-3 py-2 rounded-xl text-xs font-medium whitespace-nowrap bg-white/5 text-slate-300">🖼️ Galerie</button>
+            <button type="button" role="tab" aria-selected="false" aria-controls="profile-panel-privat" id="profile-tab-privat" data-profile-tab="privat" onclick="openProfileSection('privat')" class="shrink-0 px-3 py-2 rounded-xl text-xs font-medium whitespace-nowrap bg-white/5 text-slate-300">🔒 Privat</button>
           </div>
           <div id="profile-panel-basis" role="tabpanel" aria-labelledby="profile-tab-basis" class="space-y-3">
             <div class="flex flex-col items-center gap-2 py-4"><div class="w-28 h-28 rounded-lg border-2 border-[#c9973e] bg-white/5 flex items-center justify-center text-5xl">👤</div><h3 id="profile-display-name" class="font-display text-xl text-[#e5b55c]"></h3><p id="profile-display-role" class="text-sm text-slate-400"></p></div>
@@ -799,6 +801,8 @@
           <div id="profile-panel-nachgefragt" role="tabpanel" aria-labelledby="profile-tab-nachgefragt" class="hidden rounded-xl border border-slate-800 p-4 space-y-2"><h3 class="font-semibold text-sm text-[#e5b55c]">❔ Nachgefragt</h3><p class="text-xs text-slate-300">Fragen und Antworten</p><p class="text-xs text-slate-500">Dieser Bereich befindet sich in Vorbereitung.</p></div>
           <div id="profile-panel-chronik" role="tabpanel" aria-labelledby="profile-tab-chronik" class="hidden rounded-xl border border-slate-800 p-4 space-y-2"><h3 class="font-semibold text-sm text-[#e5b55c]">📖 Chronik</h3><p class="text-xs text-slate-300">Meilensteine und Erinnerungen</p><p class="text-xs text-slate-500">Dieser Bereich befindet sich in Vorbereitung.</p></div>
           <div id="profile-panel-statistik" role="tabpanel" aria-labelledby="profile-tab-statistik" class="hidden rounded-xl border border-slate-800 p-4 space-y-2"><h3 class="font-semibold text-sm text-[#e5b55c]">📊 Statistik</h3><p class="text-xs text-slate-300">Persönliche Auswertungen</p><p class="text-xs text-slate-500">Dieser Bereich befindet sich in Vorbereitung.</p></div>
+          <div id="profile-panel-galerie" role="tabpanel" aria-labelledby="profile-tab-galerie" class="hidden rounded-xl border border-slate-800 p-4 space-y-2"><h3 class="font-semibold text-sm text-[#e5b55c]">🖼️ Galerie</h3><p class="text-xs text-slate-500">Dieser Bereich befindet sich in Vorbereitung.</p></div>
+          <div id="profile-panel-privat" role="tabpanel" aria-labelledby="profile-tab-privat" class="hidden rounded-xl border border-slate-800 p-4 space-y-2"><h3 class="font-semibold text-sm text-[#e5b55c]">🔒 Privat</h3><p class="text-xs text-slate-500">Dieser Bereich befindet sich in Vorbereitung. Noch keine private Speicherung verfügbar.</p></div>
         </div>
       </section>
 
@@ -1085,7 +1089,7 @@
 
   <!-- Bottom Navigation Bar (7 Main Tabs) -->
   <nav id="bottom-nav" class="hidden fixed bottom-0 inset-x-0 z-40 bg-[#171a24]/95 backdrop-blur-lg border-t border-slate-800 px-1 py-1.5">
-    <div class="max-w-4xl mx-auto grid grid-cols-9 gap-0.5">
+    <div class="max-w-4xl mx-auto grid grid-cols-8 gap-0.5">
       <button data-tab="dashboard" onclick="switchTab('dashboard')" class="nav-btn flex flex-col items-center justify-center py-1.5 px-0.5 rounded-xl text-slate-400 hover:text-white transition">
         <span class="text-base sm:text-lg leading-none">🏠</span>
         <span class="text-[9px] sm:text-[10px] mt-1 font-medium truncate max-w-full">Dashboard</span>
@@ -1098,10 +1102,7 @@
         <span class="text-base sm:text-lg leading-none">📅</span>
         <span class="text-[9px] sm:text-[10px] mt-1 font-medium truncate max-w-full">Planung</span>
       </button>
-      <button data-tab="einkauf" onclick="switchTab('einkauf')" class="nav-btn flex flex-col items-center justify-center py-1.5 px-0.5 rounded-xl text-slate-400 hover:text-white transition">
-        <span class="text-base sm:text-lg leading-none">🛒</span>
-        <span class="text-[9px] sm:text-[10px] mt-1 font-medium truncate max-w-full">Einkauf</span>
-      </button>
+
       <button data-tab="strafbuch" onclick="switchTab('strafbuch')" class="nav-btn flex flex-col items-center justify-center py-1.5 px-0.5 rounded-xl text-slate-400 hover:text-white transition">
         <span class="text-base sm:text-lg leading-none">⚖️</span>
         <span class="text-[9px] sm:text-[10px] mt-1 font-medium truncate max-w-full">Strafbuch</span>
@@ -4123,8 +4124,9 @@
     }
     let planningView = 'overview';
     function openPlanning(view) {
+      if (view === 'shopping') { if (hasPermission('einkauf','visible')) switchTab('einkauf'); return; }
       if (view === 'tasks') { switchTab('aufgaben'); return; }
-      if (!hasPermission('kalender','visible')) { if(hasPermission('aufgaben','visible')) switchTab('aufgaben'); return; }
+      if (!hasPermission('kalender','visible')) { if(hasPermission('aufgaben','visible')) switchTab('aufgaben'); else if(hasPermission('einkauf','visible')) switchTab('einkauf'); return; }
       planningView = view;
       if (view === 'events' && !calSelectedDate) {
         const d = new Date(); calSelectedDate = localPlanningDate(d);
@@ -4134,12 +4136,12 @@
     }
     function localPlanningDate(d) { return d.getFullYear()+'-'+String(d.getMonth()+1).padStart(2,'0')+'-'+String(d.getDate()).padStart(2,'0'); }
     function syncPlanningUI() {
-      const inside = activeTab === 'kalender' || activeTab === 'aufgaben';
+      const inside = ['kalender','aufgaben','einkauf'].includes(activeTab);
       document.getElementById('planning-nav').classList.toggle('hidden',!inside);
       document.querySelectorAll('[data-plan]').forEach(b=>{
         const k=b.dataset.plan;
-        b.classList.toggle('hidden',k==='tasks'?!hasPermission('aufgaben','visible'):k!=='rituals'&&!hasPermission('kalender','visible'));
-        b.classList.toggle('gold-gradient',inside && k===(activeTab==='aufgaben'?'tasks':planningView));
+        b.classList.toggle('hidden',k==='shopping'?!hasPermission('einkauf','visible'):k==='tasks'?!hasPermission('aufgaben','visible'):!hasPermission('kalender','visible'));
+        b.classList.toggle('gold-gradient',inside && k===(activeTab==='einkauf'?'shopping':activeTab==='aufgaben'?'tasks':planningView));
       });
       document.getElementById('planning-month').classList.toggle('hidden',planningView!=='events');
       document.getElementById('planning-day').classList.toggle('hidden',planningView!=='events');
@@ -4148,7 +4150,7 @@
       document.getElementById('cal-new-trigger').classList.toggle('hidden',planningView!=='events'||!hasPermission('kalender','add'));
       document.getElementById('cal-filter-all').parentElement.classList.toggle('hidden',planningView==='rituals');
       const main=document.querySelector('#bottom-nav [data-tab="kalender"]');
-      main.classList.toggle('hidden',!hasPermission('kalender','visible')&&!hasPermission('aufgaben','visible'));
+      main.classList.toggle('hidden',!hasPermission('kalender','visible')&&!hasPermission('aufgaben','visible')&&!hasPermission('einkauf','visible'));
       main.classList.toggle('bg-white/10',inside);
       main.classList.toggle('text-[#e5b55c]',inside);
       main.classList.toggle('text-slate-400',!inside);
