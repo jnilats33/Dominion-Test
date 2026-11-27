@@ -782,6 +782,7 @@
         <div class="glass-card rounded-2xl p-5">
           <h2 class="font-display text-lg font-bold text-[#e5b55c]">Profil</h2>
           <p class="text-xs text-slate-400 mb-4">Persönlicher Bereich</p>
+          <div class="flex gap-2 mb-4" aria-label="Person auswählen"><button type="button" id="profile-person-Master" onclick="selectProfilePerson('Master')" class="flex-1 rounded-xl px-3 py-2 text-sm bg-white/5">Master</button><button type="button" id="profile-person-Daisy" onclick="selectProfilePerson('Daisy')" class="flex-1 rounded-xl px-3 py-2 text-sm bg-white/5">Daisy</button></div>
           <div id="profile-subtabs" role="tablist" aria-label="Profilbereiche" class="flex gap-2 overflow-x-auto pb-2 mb-4 border-b border-slate-800">
             <button type="button" role="tab" aria-selected="true" aria-controls="profile-panel-basis" id="profile-tab-basis" data-profile-tab="basis" onclick="openProfileSection('basis')" class="shrink-0 px-3 py-2 rounded-xl text-xs font-medium whitespace-nowrap gold-gradient">👤 Profil</button>
             <button type="button" role="tab" aria-selected="false" aria-controls="profile-panel-vorlieben" id="profile-tab-vorlieben" data-profile-tab="vorlieben" onclick="openProfileSection('vorlieben')" class="shrink-0 px-3 py-2 rounded-xl text-xs font-medium whitespace-nowrap bg-white/5 text-slate-300">♡ Neigungen/Vorlieben</button>
@@ -789,7 +790,11 @@
             <button type="button" role="tab" aria-selected="false" aria-controls="profile-panel-chronik" id="profile-tab-chronik" data-profile-tab="chronik" onclick="openProfileSection('chronik')" class="shrink-0 px-3 py-2 rounded-xl text-xs font-medium whitespace-nowrap bg-white/5 text-slate-300">📖 Chronik</button>
             <button type="button" role="tab" aria-selected="false" aria-controls="profile-panel-statistik" id="profile-tab-statistik" data-profile-tab="statistik" onclick="openProfileSection('statistik')" class="shrink-0 px-3 py-2 rounded-xl text-xs font-medium whitespace-nowrap bg-white/5 text-slate-300">📊 Statistik</button>
           </div>
-          <div id="profile-panel-basis" role="tabpanel" aria-labelledby="profile-tab-basis" class="rounded-xl border border-slate-800 p-4 space-y-2"><h3 class="font-semibold text-sm text-[#e5b55c]">👤 Profil</h3><p class="text-xs text-slate-300">Persönliche Basisinformationen</p><p class="text-xs text-slate-500">Dieser Bereich befindet sich in Vorbereitung.</p></div>
+          <div id="profile-panel-basis" role="tabpanel" aria-labelledby="profile-tab-basis" class="space-y-3">
+            <div class="flex flex-col items-center gap-2 py-4"><div class="w-28 h-28 rounded-lg border-2 border-[#c9973e] bg-white/5 flex items-center justify-center text-5xl">👤</div><h3 id="profile-display-name" class="font-display text-xl text-[#e5b55c]"></h3><p id="profile-display-role" class="text-sm text-slate-400"></p></div>
+            <div id="profile-topic-groups"></div>
+            <p class="text-xs text-slate-500">Profilstruktur in Vorbereitung – noch keine persönlichen Daten gespeichert.</p>
+          </div>
           <div id="profile-panel-vorlieben" role="tabpanel" aria-labelledby="profile-tab-vorlieben" class="hidden rounded-xl border border-slate-800 p-4 space-y-2"><h3 class="font-semibold text-sm text-[#e5b55c]">♡ Neigungen/Vorlieben</h3><p class="text-xs text-slate-300">Persönliche Vorlieben und Interessen</p><p class="text-xs text-slate-500">Dieser Bereich befindet sich in Vorbereitung.</p></div>
           <div id="profile-panel-nachgefragt" role="tabpanel" aria-labelledby="profile-tab-nachgefragt" class="hidden rounded-xl border border-slate-800 p-4 space-y-2"><h3 class="font-semibold text-sm text-[#e5b55c]">❔ Nachgefragt</h3><p class="text-xs text-slate-300">Fragen und Antworten</p><p class="text-xs text-slate-500">Dieser Bereich befindet sich in Vorbereitung.</p></div>
           <div id="profile-panel-chronik" role="tabpanel" aria-labelledby="profile-tab-chronik" class="hidden rounded-xl border border-slate-800 p-4 space-y-2"><h3 class="font-semibold text-sm text-[#e5b55c]">📖 Chronik</h3><p class="text-xs text-slate-300">Meilensteine und Erinnerungen</p><p class="text-xs text-slate-500">Dieser Bereich befindet sich in Vorbereitung.</p></div>
@@ -4148,6 +4153,57 @@
       main.classList.toggle('text-[#e5b55c]',inside);
       main.classList.toggle('text-slate-400',!inside);
     }
+    const PROFILE_FIELDS = [
+      {title:'Über mich',fields:[['bio','Persönliche Selbstbeschreibung','textarea'],['motto','Motto','text']]},
+      {title:'Persönliche Basisdaten',fields:[['displayName','Anzeigename','reference'],['firstName','Vorname','text'],['birthDate','Geburtsdatum','date'],['gender','Geschlecht','select'],['city','Wohnort','text']]},
+      {title:'Äußeres Erscheinungsbild',fields:[['height','Körpergröße','number'],['eyeColor','Augenfarbe','select'],['hairColor','Haarfarbe','select']]},
+      {title:'Beziehung & Rolle',fields:[['role','Rolle','reference'],['relationshipStatus','Beziehungsstatus','select'],['lookingFor','Auf der Suche','select']]},
+      {title:'Beruf & Bildung',fields:[['occupation','Beruf','text']]},
+      {title:'Sprachen',fields:[['languages','Gesprochene Sprachen','text']]},
+      {title:'Interessen & Freizeit',fields:[['interests','Interessen','textarea'],['hobbies','Hobbys','textarea']]}
+    ];
+    let profilePerson = null, profileViewer = null;
+    function selectProfilePerson(role) {
+      if (!currentRole || !['Master','Daisy'].includes(role)) return;
+      profilePerson = role;
+      renderProfileStructure();
+    }
+    function renderProfileStructure() {
+      if (!currentRole) return;
+      if (profileViewer !== currentRole) { profileViewer = currentRole; profilePerson = currentRole; }
+      for (const role of ['Master','Daisy']) {
+        const btn = document.getElementById('profile-person-'+role);
+        btn.textContent = getDisplayName(role);
+        btn.classList.toggle('gold-gradient',role===profilePerson);
+        btn.setAttribute('aria-pressed',String(role===profilePerson));
+      }
+      document.getElementById('profile-display-name').textContent = getDisplayName(profilePerson);
+      document.getElementById('profile-display-role').textContent = profilePerson === 'Master' ? 'Master' : 'Sub';
+      const root = document.getElementById('profile-topic-groups');
+      if (!root.childElementCount) {
+        root.className = 'space-y-2';
+        PROFILE_FIELDS.forEach((group,i)=>{
+          const section = document.createElement('details');
+          section.className = 'rounded-xl border border-slate-800 p-3';
+          section.open = i < 2;
+          const heading = document.createElement('summary');
+          heading.className = 'cursor-pointer text-sm font-semibold text-[#e5b55c]';
+          heading.textContent = group.title;
+          section.appendChild(heading);
+          group.fields.forEach(([key,label])=>{
+            const row = document.createElement('div');
+            row.className = 'flex justify-between gap-3 text-xs mt-3 text-slate-400';
+            const name = document.createElement('span'), value = document.createElement('span');
+            name.textContent = label; value.dataset.profileField = key;
+            row.append(name,value); section.appendChild(row);
+          });
+          root.appendChild(section);
+        });
+      }
+      root.querySelectorAll('[data-profile-field]').forEach(el=>{
+        el.textContent = el.dataset.profileField === 'displayName' ? getDisplayName(profilePerson) : el.dataset.profileField === 'role' ? (profilePerson === 'Master' ? 'Master' : 'Sub') : '—';
+      });
+    }
     function openProfileSection(id) {
       const buttons = document.querySelectorAll('[data-profile-tab]');
       if (![...buttons].some(btn => btn.dataset.profileTab === id)) return;
@@ -4236,6 +4292,7 @@
       renderTasks();
       renderRewards();
       renderEinstellungen();
+      renderProfileStructure();
       syncPlanningUI();
       badgeRefresh();
     }
