@@ -43,6 +43,24 @@
       overflow-x: hidden;
     }
 
+    /* Responsive navigation and narrow cover displays */
+    html, body { max-width: 100%; overflow-x: clip; }
+    #main-app, #view-container, #view-container > section { min-width: 0; max-width: 100%; }
+    #bottom-nav > div { grid-template-columns: repeat(8, minmax(0, 1fr)); }
+    #bottom-nav .nav-btn { min-width: 0; position: relative; }
+    body { padding-bottom: 96px; }
+    @media (max-width: 479px) {
+      #bottom-nav > div { grid-template-columns: repeat(4, minmax(0, 1fr)); row-gap: 4px; }
+      body { padding-bottom: 144px; }
+      #main-app > header > div { flex-wrap: wrap; }
+      #main-app > header > div > div:first-child > div:last-child > div:first-child { flex-wrap: wrap; }
+      #dashboard-metrics-grid > * { min-width: 0; overflow-wrap: anywhere; }
+      #planning-nav { grid-template-columns: repeat(3, minmax(0, 1fr)); }
+    }
+    @media (max-width: 340px) {
+      #dashboard-metrics-grid { grid-template-columns: minmax(0, 1fr); }
+    }
+
     .font-display {
       font-family: 'Cinzel', Georgia, serif;
     }
