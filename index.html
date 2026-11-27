@@ -812,8 +812,9 @@
           </div>
           <div id="profile-panel-basis" role="tabpanel" aria-labelledby="profile-tab-basis" class="space-y-3">
             <div class="flex flex-col items-center gap-2 py-4"><div class="w-28 h-28 rounded-lg border-2 border-[#c9973e] bg-white/5 flex items-center justify-center text-5xl">👤</div><h3 id="profile-display-name" class="font-display text-xl text-[#e5b55c]"></h3><p id="profile-display-role" class="text-sm text-slate-400"></p></div>
+            <div id="profile-edit-actions" class="flex flex-wrap justify-end gap-2"><button id="profile-edit-start" type="button" onclick="startProfileEdit()" class="rounded-lg border border-amber-500/40 px-3 py-2 text-sm text-amber-200">✎ Bearbeiten</button><button id="profile-edit-save" type="button" onclick="finishProfileEdit(true)" class="hidden gold-gradient rounded-lg px-3 py-2 text-sm">Speichern</button><button id="profile-edit-cancel" type="button" onclick="finishProfileEdit(false)" class="hidden rounded-lg border border-slate-600 px-3 py-2 text-sm">Abbrechen</button></div>
             <div id="profile-topic-groups"></div>
-            <p class="text-xs text-slate-500">Profilstruktur in Vorbereitung – noch keine persönlichen Daten gespeichert.</p>
+            <p class="text-xs text-slate-400">TEST-Vorschau: Nur fiktive Daten eingeben. Keine Speicherung in Firebase oder im Browser-Speicher. Beim Neuladen oder Rollenwechsel gehen die Eingaben verloren. Sichtbarkeit ist hier nur eine Vorschau.</p>
           </div>
           <div id="profile-panel-vorlieben" role="tabpanel" aria-labelledby="profile-tab-vorlieben" class="hidden rounded-xl border border-slate-800 p-4 space-y-2"><h3 class="font-semibold text-sm text-[#e5b55c]">♡ Neigungen/Vorlieben</h3><p class="text-xs text-slate-300">Persönliche Vorlieben und Interessen</p><p class="text-xs text-slate-500">Dieser Bereich befindet sich in Vorbereitung.</p></div>
           <div id="profile-panel-nachgefragt" role="tabpanel" aria-labelledby="profile-tab-nachgefragt" class="hidden rounded-xl border border-slate-800 p-4 space-y-2"><h3 class="font-semibold text-sm text-[#e5b55c]">❔ Nachgefragt</h3><p class="text-xs text-slate-300">Fragen und Antworten</p><p class="text-xs text-slate-500">Dieser Bereich befindet sich in Vorbereitung.</p></div>
@@ -3952,6 +3953,8 @@
 
     function logoutRole() {
       if (roleWriteBusy()) { showToast('Bitte laufende Speicherung abwarten.','error'); return; }
+      if (!profileCanLeave()) return;
+      clearProfilePreview();
       masterToDaisyBypass = currentRole === 'Master';
       currentRole = null;
       activateRoleSession();
@@ -4182,51 +4185,85 @@
       {title:'Sprachen',fields:[['languages','Gesprochene Sprachen','text']]},
       {title:'Interessen & Freizeit',fields:[['interests','Interessen','textarea'],['hobbies','Hobbys','textarea']]}
     ];
-    let profilePerson = null, profileViewer = null;
+    let profilePerson = null, profileViewer = null, profilePreview = {}, profileDraft = null, profileRenderKey = '';
+    const PROFILE_OPTIONS = {gender:['Weiblich','Männlich','Divers','Keine Angabe'],eyeColor:['Braun','Blau','Grün','Grau','Haselnuss','Andere'],hairColor:['Blond','Braun','Schwarz','Rot','Grau','Weiß','Andere'],relationshipStatus:['Single','In einer Beziehung','Verheiratet','Andere'],lookingFor:['Ja','Nein','Keine Angabe']};
+    function profileCanLeave() {
+      if (!profileDraft) return true;
+      if (JSON.stringify(profileDraft)!==JSON.stringify(profilePreview) && !confirm('Ungespeicherte Profiländerungen verwerfen?')) return false;
+      profileDraft=null; profileRenderKey=''; renderProfileStructure(); return true;
+    }
+    function clearProfilePreview() {
+      profilePreview={}; profileDraft=null; profileRenderKey=''; profileViewer=null; profilePerson=null;
+      document.getElementById('profile-topic-groups')?.replaceChildren();
+    }
+    function startProfileEdit() {
+      if (!currentRole || profilePerson!==currentRole || profileDraft) return;
+      profileDraft=JSON.parse(JSON.stringify(profilePreview)); profileRenderKey=''; renderProfileStructure();
+    }
+    function finishProfileEdit(save) {
+      if (!profileDraft || profilePerson!==currentRole) return;
+      if (!save) { profileCanLeave(); return; }
+      const root=document.getElementById('profile-topic-groups');
+      for(const input of root.querySelectorAll('input,textarea,select')) if(!input.reportValidity()) return;
+      profilePreview=JSON.parse(JSON.stringify(profileDraft)); profileDraft=null; profileRenderKey=''; renderProfileStructure();
+      showToast('Profilvorschau gespeichert – nur für diese Sitzung.');
+    }
+    window.addEventListener('beforeunload',e=>{if(profileDraft && JSON.stringify(profileDraft)!==JSON.stringify(profilePreview)){e.preventDefault();e.returnValue='';}});
     function selectProfilePerson(role) {
-      if (!currentRole || !['Master','Daisy'].includes(role)) return;
-      profilePerson = role;
-      renderProfileStructure();
+      if (!currentRole || !['Master','Daisy'].includes(role) || role===profilePerson || !profileCanLeave()) return;
+      profilePerson=role; renderProfileStructure();
     }
     function renderProfileStructure() {
       if (!currentRole) return;
-      if (profileViewer !== currentRole) { profileViewer = currentRole; profilePerson = currentRole; }
-      for (const role of ['Master','Daisy']) {
-        const btn = document.getElementById('profile-person-'+role);
-        btn.textContent = getDisplayName(role);
-        btn.classList.toggle('gold-gradient',role===profilePerson);
-        btn.setAttribute('aria-pressed',String(role===profilePerson));
+      if (profileViewer!==currentRole) { clearProfilePreview(); profileViewer=currentRole; profilePerson=currentRole; }
+      for(const role of ['Master','Daisy']){
+        const btn=document.getElementById('profile-person-'+role);
+        btn.textContent=getDisplayName(role); btn.classList.toggle('gold-gradient',role===profilePerson); btn.setAttribute('aria-pressed',String(role===profilePerson));
       }
-      document.getElementById('profile-display-name').textContent = getDisplayName(profilePerson);
-      document.getElementById('profile-display-role').textContent = profilePerson === 'Master' ? 'Master' : 'Sub';
-      const root = document.getElementById('profile-topic-groups');
-      if (!root.childElementCount) {
-        root.className = 'space-y-2';
-        PROFILE_FIELDS.forEach((group,i)=>{
-          const section = document.createElement('details');
-          section.className = 'rounded-xl border border-slate-800 p-3';
-          section.open = i < 2;
-          const heading = document.createElement('summary');
-          heading.className = 'cursor-pointer text-sm font-semibold text-[#e5b55c]';
-          heading.textContent = group.title;
-          section.appendChild(heading);
-          group.fields.forEach(([key,label])=>{
-            const row = document.createElement('div');
-            row.className = 'flex justify-between gap-3 text-xs mt-3 text-slate-400';
-            const name = document.createElement('span'), value = document.createElement('span');
-            name.textContent = label; value.dataset.profileField = key;
-            row.append(name,value); section.appendChild(row);
-          });
-          root.appendChild(section);
-        });
-      }
-      root.querySelectorAll('[data-profile-field]').forEach(el=>{
-        el.textContent = el.dataset.profileField === 'displayName' ? getDisplayName(profilePerson) : el.dataset.profileField === 'role' ? (profilePerson === 'Master' ? 'Master' : 'Sub') : '—';
+      document.getElementById('profile-display-name').textContent=getDisplayName(profilePerson);
+      document.getElementById('profile-display-role').textContent=profilePerson==='Master'?'Master':'Sub';
+      const own=profilePerson===currentRole, editing=own && !!profileDraft;
+      document.getElementById('profile-edit-start').classList.toggle('hidden',!own||editing);
+      document.getElementById('profile-edit-save').classList.toggle('hidden',!editing);
+      document.getElementById('profile-edit-cancel').classList.toggle('hidden',!editing);
+      const root=document.getElementById('profile-topic-groups'), key=profilePerson+':'+editing;
+      const reference=k=>k==='displayName'?getDisplayName(profilePerson):profilePerson==='Master'?'Master':'Sub';
+      if(profileRenderKey===key){root.querySelectorAll('[data-profile-reference]').forEach(el=>el.textContent=reference(el.dataset.profileReference));return;}
+      profileRenderKey=key; root.replaceChildren(); root.className='space-y-2';
+      const data=own?(editing?profileDraft:profilePreview):{};
+      const controlClass='w-full min-w-0 rounded-lg bg-slate-900 border border-slate-700 p-2 text-sm text-slate-100';
+      PROFILE_FIELDS.forEach((group,i)=>{
+        const fields=group.fields.filter(([k,l,t])=>editing||t==='reference'||String(data[k]?.value||'').trim());
+        if(!fields.length)return;
+        const section=document.createElement('details');section.className='rounded-xl border border-slate-800 p-3';section.open=i<2;
+        const heading=document.createElement('summary');heading.className='cursor-pointer text-sm font-semibold text-[#e5b55c]';heading.textContent=group.title;section.append(heading);
+        fields.forEach(([k,label,type])=>{
+          const row=document.createElement('div');row.className='space-y-1 mt-3 text-xs text-slate-400';
+          const name=document.createElement('label');name.textContent=label;row.append(name);
+          if(type==='reference'||!editing){
+            const value=document.createElement('div');value.className='text-sm text-slate-100 whitespace-pre-wrap break-words';value.textContent=type==='reference'?reference(k):data[k].value;
+            if(type==='reference')value.dataset.profileReference=k;row.append(value);
+          }else{
+            const input=document.createElement(type==='textarea'?'textarea':type==='select'?'select':'input');
+            input.id='profile-field-'+k;name.htmlFor=input.id;input.className=controlClass;
+            if(type==='select'){for(const v of ['',...(PROFILE_OPTIONS[k]||[])]){const o=document.createElement('option');o.value=v;o.textContent=v||'Bitte auswählen';input.append(o);}}
+            else if(type==='textarea'){input.rows=3;input.maxLength=2000;}
+            else{input.type=type; if(type==='number'){input.min=1;input.max=300;input.placeholder='cm';}else if(type==='date'){input.max=new Date().toISOString().slice(0,10);}else input.maxLength=250;}
+            input.value=data[k]?.value||'';
+            const visibility=document.createElement('select');visibility.className=controlClass;visibility.setAttribute('aria-label','Sichtbarkeit: '+label);
+            for(const [v,l] of [['private','Nur ich'],['partner','Partner']]){const o=document.createElement('option');o.value=v;o.textContent=l;visibility.append(o);}
+            visibility.value=data[k]?.visibility||'private';
+            const update=()=>{if(profileDraft)profileDraft[k]={value:input.value,visibility:visibility.value};};
+            input.addEventListener('input',update);visibility.addEventListener('change',update);row.append(input,visibility);
+          }
+          section.append(row);
+        });root.append(section);
       });
     }
     function openProfileSection(id) {
       const buttons = document.querySelectorAll('[data-profile-tab]');
       if (![...buttons].some(btn => btn.dataset.profileTab === id)) return;
+      if (id !== 'basis' && !profileCanLeave()) return;
       buttons.forEach(btn => {
         const selected = btn.dataset.profileTab === id;
         btn.setAttribute('aria-selected', String(selected));
@@ -4237,6 +4274,7 @@
       });
     }
     function switchTab(tabId) {
+      if (activeTab === 'profil' && tabId !== 'profil' && !profileCanLeave()) return;
       if(tabId==='aufgaben'&&!hasPermission('aufgaben','visible')) tabId='dashboard';
       if (currentRole === 'Daisy' && ['kalender', 'einkauf', 'strafbuch'].includes(tabId)) {
         if (!hasPermission(tabId, 'visible')) {
