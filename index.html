@@ -811,7 +811,8 @@
             <button type="button" role="tab" aria-selected="false" aria-controls="profile-panel-privat" id="profile-tab-privat" data-profile-tab="privat" onclick="openProfileSection('privat')" class="shrink-0 px-3 py-2 rounded-xl text-xs font-medium whitespace-nowrap bg-white/5 text-slate-300">🔒 Privat</button>
           </div>
           <div id="profile-panel-basis" role="tabpanel" aria-labelledby="profile-tab-basis" class="space-y-3">
-            <div class="flex flex-col items-center gap-2 py-4"><div class="w-28 h-28 rounded-lg border-2 border-[#c9973e] bg-white/5 flex items-center justify-center text-5xl">👤</div><h3 id="profile-display-name" class="font-display text-xl text-[#e5b55c]"></h3><p id="profile-display-role" class="text-sm text-slate-400"></p></div>
+            <div class="flex flex-col items-center gap-2 py-4"><div class="relative"><img id="profile-avatar" alt="Profilbild" class="w-28 h-28 object-cover rounded-lg border-2 border-[#c9973e] bg-slate-800"><button id="profile-avatar-edit" type="button" onclick="openAvatarPicker()" aria-label="Profilbild bearbeiten" class="hidden absolute bottom-1 right-1 rounded-lg bg-slate-900 border border-amber-500 p-2">✎</button></div>
+<div id="profile-avatar-picker" class="hidden w-full space-y-2 rounded-xl border border-slate-700 p-3"><div class="flex justify-between"><strong>Profilbild auswählen</strong><button type="button" onclick="document.getElementById('profile-avatar-picker').classList.add('hidden')">✕</button></div><select id="profile-avatar-group" onchange="renderAvatarChoices()" class="w-full bg-slate-900 rounded-lg p-2"><option value="m">Männlich</option><option value="f">Weiblich</option><option value="n">Neutral</option></select><div id="profile-avatar-choices" class="grid grid-cols-3 gap-2"></div><button type="button" onclick="chooseProfileAvatar('')" class="w-full rounded-lg border border-slate-600 p-2">Automatisches Standardbild</button><label class="block text-sm">Eigenes Testbild (JPG, PNG, WebP)<input id="profile-avatar-upload" type="file" accept="image/jpeg,image/png,image/webp" onchange="uploadProfileAvatar(this)" class="block w-full text-xs mt-2"></label><p class="text-xs text-slate-400">Mittiger quadratischer Zuschnitt. Auswahl mit Speichern übernehmen.</p></div><h3 id="profile-display-name" class="font-display text-xl text-[#e5b55c]"></h3><p id="profile-display-role" class="text-sm text-slate-400"></p></div>
             <div id="profile-edit-actions" class="flex flex-wrap justify-end gap-2"><button id="profile-edit-start" type="button" onclick="startProfileEdit()" class="rounded-lg border border-amber-500/40 px-3 py-2 text-sm text-amber-200">✎ Bearbeiten</button><button id="profile-edit-save" type="button" onclick="finishProfileEdit(true)" class="hidden gold-gradient rounded-lg px-3 py-2 text-sm">Speichern</button><button id="profile-edit-cancel" type="button" onclick="finishProfileEdit(false)" class="hidden rounded-lg border border-slate-600 px-3 py-2 text-sm">Abbrechen</button></div>
             <div id="profile-topic-groups"></div>
             <p class="text-xs text-slate-400">TEST-Vorschau: Nur fiktive Daten eingeben. Keine Speicherung in Firebase oder im Browser-Speicher. Beim Neuladen oder Rollenwechsel gehen die Eingaben verloren. Sichtbarkeit ist hier nur eine Vorschau.</p>
@@ -4187,6 +4188,27 @@
     ];
     let profilePerson = null, profileViewer = null, profilePreview = {}, profileDraft = null, profileRenderKey = '';
     const PROFILE_OPTIONS = {gender:['Weiblich','Männlich','Divers','Keine Angabe'],eyeColor:['Braun','Blau','Grün','Grau','Haselnuss','Andere'],hairColor:['Blond','Braun','Schwarz','Rot','Grau','Weiß','Andere'],relationshipStatus:['Single','In einer Beziehung','Verheiratet','Andere'],lookingFor:['Ja','Nein','Keine Angabe']};
+    function avatarGroup(data) {return data?.gender?.value==='Männlich'?'m':data?.gender?.value==='Weiblich'?'f':'n';}
+    function avatarGraphic(id) {
+      const match=/^([mfn])([0-5])$/.exec(id)||['','n','0'], g=match[1], i=Number(match[2]);
+      const skin=['#e3b18b','#b97c55','#f1c7a5','#986344','#d3a17b','#e8b997'][i], hair=['#49352c','#25252a','#b4824d','#777477','#302724','#714b36'][i], bg=['#384553','#414d47','#484250','#51433d','#374750','#47474c'][i];
+      const back=g==='f'?'<path d="M23 43 Q17 5 50 6 Q84 6 78 45 L84 83 H16Z" fill="'+hair+'"/>':g==='n'&&i%2?'<ellipse cx="50" cy="36" rx="29" ry="30" fill="'+hair+'"/>':'';
+      const top=g==='f'?'M27 40 Q18 8 50 9 Q81 8 74 40 L60 19 Q43 39 27 40Z':g==='n'?'M26 35 Q22 8 50 9 Q79 9 74 35 L62 24 L40 19Z':['M27 37 Q19 4 50 9 Q79 8 74 39 L63 23 L33 27Z','M27 38 Q19 13 44 9 Q79 5 74 38 L64 19 L31 28Z','M27 31 Q30 5 50 10 Q76 9 74 33 L50 20Z'][i%3];
+      const glasses=i===2||i===4?'<g stroke="#25252a" stroke-width="2" fill="none"><rect x="32" y="35" width="16" height="12" rx="4"/><rect x="52" y="35" width="16" height="12" rx="4"/><path d="M48 40H52"/></g>':'';
+      const svg='<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 100 100"><rect width="100" height="100" fill="'+bg+'"/>'+back+'<path d="M8 100 Q10 72 36 68 H64 Q90 72 92 100" fill="'+['#202631','#5d3434','#354c60','#555942','#302b39','#625442'][i]+'"/><rect x="42" y="56" width="16" height="19" rx="5" fill="'+skin+'"/><ellipse cx="50" cy="42" rx="23" ry="28" fill="'+skin+'"/><path d="'+top+'" fill="'+hair+'"/><circle cx="41" cy="41" r="2.5" fill="#25252a"/><circle cx="59" cy="41" r="2.5" fill="#25252a"/><path d="M43 55 Q50 60 57 55" stroke="#875a47" stroke-width="2" fill="none"/>'+glasses+'</svg>';
+      return 'data:image/svg+xml;charset=utf-8,'+encodeURIComponent(svg);
+    }
+    function profileAvatarSrc(data) {const v=data?.avatar?.value||'';return v.startsWith('data:image/jpeg;base64,')?v:avatarGraphic(v||avatarGroup(data)+'0');}
+    function refreshProfileAvatar() {
+      const own=profilePerson===currentRole, data=own?(profileDraft||profilePreview):{};
+      document.getElementById('profile-avatar').src=profileAvatarSrc(data);
+      document.getElementById('profile-avatar-edit').classList.toggle('hidden',!own||!profileDraft);
+      if(!own||!profileDraft)document.getElementById('profile-avatar-picker').classList.add('hidden');
+    }
+    function openAvatarPicker(){if(!profileDraft||profilePerson!==currentRole)return;document.getElementById('profile-avatar-group').value=avatarGroup(profileDraft);document.getElementById('profile-avatar-picker').classList.remove('hidden');renderAvatarChoices();}
+    function renderAvatarChoices(){const root=document.getElementById('profile-avatar-choices'),g=document.getElementById('profile-avatar-group').value;root.replaceChildren();for(let i=0;i<6;i++){const b=document.createElement('button'),im=document.createElement('img');b.type='button';b.className='rounded-lg border border-slate-600 p-1';im.src=avatarGraphic(g+i);im.alt='Avatar '+(i+1);im.className='w-full rounded';b.append(im);b.onclick=()=>chooseProfileAvatar(g+i);root.append(b);}}
+    function chooseProfileAvatar(v){if(!profileDraft||profilePerson!==currentRole)return;if(v)profileDraft.avatar={value:v};else delete profileDraft.avatar;refreshProfileAvatar();document.getElementById('profile-avatar-picker').classList.add('hidden');}
+    async function uploadProfileAvatar(input){const file=input.files?.[0],draft=profileDraft,role=currentRole;input.value='';if(!file||!draft||profilePerson!==role)return;if(!['image/jpeg','image/png','image/webp'].includes(file.type)||file.size>10000000)return showToast('Bitte JPG, PNG oder WebP bis 10 MB wählen.','error');let url;try{url=URL.createObjectURL(file);const img=new Image();img.src=url;await img.decode();if(profileDraft!==draft||currentRole!==role||profilePerson!==role)return;const side=Math.min(img.naturalWidth,img.naturalHeight);if(!side)throw Error('Leeres Bild');const c=document.createElement('canvas');c.width=c.height=256;const ctx=c.getContext('2d');ctx.fillStyle='#252932';ctx.fillRect(0,0,256,256);ctx.drawImage(img,(img.naturalWidth-side)/2,(img.naturalHeight-side)/2,side,side,0,0,256,256);chooseProfileAvatar(c.toDataURL('image/jpeg',0.85));}catch(e){showToast('Bild konnte nicht verarbeitet werden.','error');}finally{if(url)URL.revokeObjectURL(url);}}
     function profileCanLeave() {
       if (!profileDraft) return true;
       if (JSON.stringify(profileDraft)!==JSON.stringify(profilePreview) && !confirm('Ungespeicherte Profiländerungen verwerfen?')) return false;
@@ -4226,6 +4248,7 @@
       document.getElementById('profile-edit-start').classList.toggle('hidden',!own||editing);
       document.getElementById('profile-edit-save').classList.toggle('hidden',!editing);
       document.getElementById('profile-edit-cancel').classList.toggle('hidden',!editing);
+      refreshProfileAvatar();
       const root=document.getElementById('profile-topic-groups'), key=profilePerson+':'+editing;
       const reference=k=>k==='displayName'?getDisplayName(profilePerson):profilePerson==='Master'?'Master':'Sub';
       if(profileRenderKey===key){root.querySelectorAll('[data-profile-reference]').forEach(el=>el.textContent=reference(el.dataset.profileReference));return;}
@@ -4253,7 +4276,7 @@
             const visibility=document.createElement('select');visibility.className=controlClass;visibility.setAttribute('aria-label','Sichtbarkeit: '+label);
             for(const [v,l] of [['private','Nur ich'],['partner','Partner']]){const o=document.createElement('option');o.value=v;o.textContent=l;visibility.append(o);}
             visibility.value=data[k]?.visibility||'private';
-            const update=()=>{if(profileDraft)profileDraft[k]={value:input.value,visibility:visibility.value};};
+            const update=()=>{if(profileDraft){profileDraft[k]={value:input.value,visibility:visibility.value};if(k==='gender')refreshProfileAvatar();}};
             input.addEventListener('input',update);visibility.addEventListener('change',update);row.append(input,visibility);
           }
           section.append(row);
