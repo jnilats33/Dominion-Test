@@ -778,6 +778,25 @@
           <div id="rewards-ledger" class="space-y-2"></div>
         </div>
       </section>
+      <section id="tab-profil" class="hidden space-y-4 animate-fade">
+        <div class="glass-card rounded-2xl p-5">
+          <h2 class="font-display text-lg font-bold text-[#e5b55c]">Profil</h2>
+          <p class="text-xs text-slate-400 mb-4">Persönlicher Bereich</p>
+          <div id="profile-subtabs" role="tablist" aria-label="Profilbereiche" class="flex gap-2 overflow-x-auto pb-2 mb-4 border-b border-slate-800">
+            <button type="button" role="tab" aria-selected="true" aria-controls="profile-panel-basis" id="profile-tab-basis" data-profile-tab="basis" onclick="openProfileSection('basis')" class="shrink-0 px-3 py-2 rounded-xl text-xs font-medium whitespace-nowrap gold-gradient">👤 Profil</button>
+            <button type="button" role="tab" aria-selected="false" aria-controls="profile-panel-vorlieben" id="profile-tab-vorlieben" data-profile-tab="vorlieben" onclick="openProfileSection('vorlieben')" class="shrink-0 px-3 py-2 rounded-xl text-xs font-medium whitespace-nowrap bg-white/5 text-slate-300">♡ Neigungen/Vorlieben</button>
+            <button type="button" role="tab" aria-selected="false" aria-controls="profile-panel-nachgefragt" id="profile-tab-nachgefragt" data-profile-tab="nachgefragt" onclick="openProfileSection('nachgefragt')" class="shrink-0 px-3 py-2 rounded-xl text-xs font-medium whitespace-nowrap bg-white/5 text-slate-300">❔ Nachgefragt</button>
+            <button type="button" role="tab" aria-selected="false" aria-controls="profile-panel-chronik" id="profile-tab-chronik" data-profile-tab="chronik" onclick="openProfileSection('chronik')" class="shrink-0 px-3 py-2 rounded-xl text-xs font-medium whitespace-nowrap bg-white/5 text-slate-300">📖 Chronik</button>
+            <button type="button" role="tab" aria-selected="false" aria-controls="profile-panel-statistik" id="profile-tab-statistik" data-profile-tab="statistik" onclick="openProfileSection('statistik')" class="shrink-0 px-3 py-2 rounded-xl text-xs font-medium whitespace-nowrap bg-white/5 text-slate-300">📊 Statistik</button>
+          </div>
+          <div id="profile-panel-basis" role="tabpanel" aria-labelledby="profile-tab-basis" class="rounded-xl border border-slate-800 p-4 space-y-2"><h3 class="font-semibold text-sm text-[#e5b55c]">👤 Profil</h3><p class="text-xs text-slate-300">Persönliche Basisinformationen</p><p class="text-xs text-slate-500">Dieser Bereich befindet sich in Vorbereitung.</p></div>
+          <div id="profile-panel-vorlieben" role="tabpanel" aria-labelledby="profile-tab-vorlieben" class="hidden rounded-xl border border-slate-800 p-4 space-y-2"><h3 class="font-semibold text-sm text-[#e5b55c]">♡ Neigungen/Vorlieben</h3><p class="text-xs text-slate-300">Persönliche Vorlieben und Interessen</p><p class="text-xs text-slate-500">Dieser Bereich befindet sich in Vorbereitung.</p></div>
+          <div id="profile-panel-nachgefragt" role="tabpanel" aria-labelledby="profile-tab-nachgefragt" class="hidden rounded-xl border border-slate-800 p-4 space-y-2"><h3 class="font-semibold text-sm text-[#e5b55c]">❔ Nachgefragt</h3><p class="text-xs text-slate-300">Fragen und Antworten</p><p class="text-xs text-slate-500">Dieser Bereich befindet sich in Vorbereitung.</p></div>
+          <div id="profile-panel-chronik" role="tabpanel" aria-labelledby="profile-tab-chronik" class="hidden rounded-xl border border-slate-800 p-4 space-y-2"><h3 class="font-semibold text-sm text-[#e5b55c]">📖 Chronik</h3><p class="text-xs text-slate-300">Meilensteine und Erinnerungen</p><p class="text-xs text-slate-500">Dieser Bereich befindet sich in Vorbereitung.</p></div>
+          <div id="profile-panel-statistik" role="tabpanel" aria-labelledby="profile-tab-statistik" class="hidden rounded-xl border border-slate-800 p-4 space-y-2"><h3 class="font-semibold text-sm text-[#e5b55c]">📊 Statistik</h3><p class="text-xs text-slate-300">Persönliche Auswertungen</p><p class="text-xs text-slate-500">Dieser Bereich befindet sich in Vorbereitung.</p></div>
+        </div>
+      </section>
+
       <section id="tab-einstellungen" class="hidden space-y-4 animate-fade">
         <div class="glass-card rounded-2xl p-5 border border-[#c9973e]/25">
           <div class="mb-4">
@@ -1061,7 +1080,7 @@
 
   <!-- Bottom Navigation Bar (7 Main Tabs) -->
   <nav id="bottom-nav" class="hidden fixed bottom-0 inset-x-0 z-40 bg-[#171a24]/95 backdrop-blur-lg border-t border-slate-800 px-1 py-1.5">
-    <div class="max-w-4xl mx-auto grid grid-cols-8 gap-0.5">
+    <div class="max-w-4xl mx-auto grid grid-cols-9 gap-0.5">
       <button data-tab="dashboard" onclick="switchTab('dashboard')" class="nav-btn flex flex-col items-center justify-center py-1.5 px-0.5 rounded-xl text-slate-400 hover:text-white transition">
         <span class="text-base sm:text-lg leading-none">🏠</span>
         <span class="text-[9px] sm:text-[10px] mt-1 font-medium truncate max-w-full">Dashboard</span>
@@ -1087,6 +1106,9 @@
       <button data-tab="verwaltung" onclick="switchTab('verwaltung')" class="nav-btn flex flex-col items-center justify-center py-1.5 px-0.5 rounded-xl text-slate-400 hover:text-white transition">
         <span class="text-base sm:text-lg leading-none">📦</span>
         <span class="text-[9px] sm:text-[10px] mt-1 font-medium truncate max-w-full">Verwaltung</span>
+      </button>
+      <button data-tab="profil" onclick="switchTab('profil')" class="nav-btn flex flex-col items-center justify-center py-1.5 px-0.5 rounded-xl text-slate-400 hover:text-white transition">
+        <span class="text-base sm:text-lg leading-none">👤</span><span class="text-[9px] sm:text-[10px] mt-1 font-medium truncate max-w-full">Profil</span>
       </button>
       <button data-tab="einstellungen" onclick="switchTab('einstellungen')" class="nav-btn flex flex-col items-center justify-center py-1.5 px-0.5 rounded-xl text-slate-400 hover:text-white transition">
         <span class="text-base sm:text-lg leading-none">⚙️</span>
@@ -4126,6 +4148,18 @@
       main.classList.toggle('text-[#e5b55c]',inside);
       main.classList.toggle('text-slate-400',!inside);
     }
+    function openProfileSection(id) {
+      const buttons = document.querySelectorAll('[data-profile-tab]');
+      if (![...buttons].some(btn => btn.dataset.profileTab === id)) return;
+      buttons.forEach(btn => {
+        const selected = btn.dataset.profileTab === id;
+        btn.setAttribute('aria-selected', String(selected));
+        btn.classList.toggle('gold-gradient', selected);
+        btn.classList.toggle('bg-white/5', !selected);
+        btn.classList.toggle('text-slate-300', !selected);
+        document.getElementById('profile-panel-' + btn.dataset.profileTab).classList.toggle('hidden', !selected);
+      });
+    }
     function switchTab(tabId) {
       if(tabId==='aufgaben'&&!hasPermission('aufgaben','visible')) tabId='dashboard';
       if (currentRole === 'Daisy' && ['kalender', 'einkauf', 'strafbuch'].includes(tabId)) {
@@ -4139,7 +4173,7 @@
       activeTab = tabId;
       if (menuNewHighlights[tabId]) badgeEnter(tabId);
 
-      const allTabs = ['dashboard', 'chat', 'kalender', 'einkauf', 'strafbuch', 'aufgaben', 'rewards', 'verwaltung', 'einstellungen'];
+      const allTabs = ['dashboard', 'chat', 'kalender', 'einkauf', 'strafbuch', 'aufgaben', 'rewards', 'verwaltung', 'profil', 'einstellungen'];
       allTabs.forEach(t => {
         const el = document.getElementById('tab-' + t);
         if (el) el.classList.toggle('hidden', t !== tabId);
