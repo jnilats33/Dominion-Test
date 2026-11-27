@@ -52,7 +52,9 @@
     @media (max-width: 479px) {
       #bottom-nav > div { grid-template-columns: repeat(4, minmax(0, 1fr)); row-gap: 4px; }
       body { padding-bottom: 144px; }
-      #main-app > header > div { flex-wrap: wrap; }
+      #main-app > header > div { flex-wrap: nowrap; }
+      #main-app > header { padding: 8px; }
+      #main-app > header > div > div:first-child > div:first-child { display: none; }
       #main-app > header > div > div:first-child > div:last-child > div:first-child { flex-wrap: wrap; }
       #dashboard-metrics-grid > * { min-width: 0; overflow-wrap: anywhere; }
       #planning-nav { grid-template-columns: repeat(3, minmax(0, 1fr)); }
@@ -237,21 +239,6 @@
                 <span class="w-1.5 h-1.5 rounded-full bg-emerald-400"></span>
                 <span id="sync-status-label">Live</span>
               </span>
-              <button id="sync-recovery-test-button" type="button" onclick="recoverOverdueTaskTest()" hidden
-                class="px-2 py-0.5 rounded-lg border border-amber-500/50 text-amber-200 bg-amber-950/50 text-[10px] font-semibold"
-                title="TEST: geprüften Verspätungsvorgang atomar wiederherstellen">Verspätung reparieren</button>
-              <button id="sync-counter-seven-button" type="button" onclick="repairSeventhCounterTest()" hidden
-                class="px-2 py-0.5 rounded-lg border border-amber-500/50 text-amber-200 bg-amber-950/50 text-[10px] font-semibold"
-                title="TEST: nur den geprüften Aufgabenzähler und ggf. fehlende Nummer reparieren">Zähler 7 reparieren</button>
-              <button id="sync-fresh-check-button" type="button" onclick="inspectFreshConflictTest()" hidden
-                class="px-2 py-0.5 rounded-lg border border-sky-500/50 text-sky-200 bg-sky-950/50 text-[10px] font-semibold"
-                title="Konfliktentwurf mit frischem TEST-Serverstand vergleichen, nur lesen">Serverstand prüfen</button>
-              <button id="task-counter-check-button" type="button" onclick="inspectTaskCounterTest()" hidden
-                class="px-2 py-0.5 rounded-lg border border-sky-500/50 text-sky-200 bg-sky-950/50 text-[10px] font-semibold"
-                title="Aufgabennummern und Zähler in TEST nur lesen">Aufgabenzähler prüfen</button>
-              <button id="task-counter-repair-button" type="button" onclick="repairTaskCounterTest()" hidden
-                class="px-2 py-0.5 rounded-lg border border-amber-500/50 text-amber-200 bg-amber-950/50 text-[10px] font-semibold"
-                title="TEST: Fehlende Nummer A-0005 und Zähler nach Sicherheitsprüfung reparieren">Aufgabenzähler reparieren</button>
               <button id="sync-conflict-review-button" type="button" onclick="openSyncConflictReview()" hidden
                 class="px-2 py-0.5 rounded-lg border border-rose-500/50 text-rose-200 bg-rose-950/50 text-[10px] font-semibold"
                 title="Ungespeicherte Änderungen ansehen">Konflikt prüfen</button>
@@ -261,13 +248,10 @@
         </div>
 
         <div class="flex items-center gap-2 shrink-0">
-          <div class="px-3 py-1.5 rounded-xl bg-white/5 border border-slate-800 text-xs flex items-center gap-1.5">
-            <span id="active-role-icon">♛</span>
-            <span id="active-role-name" class="font-semibold text-slate-200">Master</span>
-          </div>
-          <button onclick="logoutRole()" title="Rolle wechseln" class="p-2 rounded-xl bg-white/5 hover:bg-white/10 border border-slate-800 text-slate-300 text-xs transition">
-            🔒
-          </button>
+          <span class="hidden" id="active-role-icon"></span><span class="hidden" id="active-role-name"></span>
+          <button type="button" id="header-person-Master" onclick="openHeaderProfile('Master')" class="flex flex-col items-center gap-0.5 min-w-0 w-12"><img id="header-avatar-Master" alt="" class="w-10 h-10 rounded-lg object-cover border border-[#c9973e]"><span id="header-name-Master" class="text-[10px] text-slate-300 truncate w-full text-center"></span></button>
+          <button type="button" id="header-person-Daisy" onclick="openHeaderProfile('Daisy')" class="flex flex-col items-center gap-0.5 min-w-0 w-12"><img id="header-avatar-Daisy" alt="" class="w-10 h-10 rounded-lg object-cover border border-[#c9973e]"><span id="header-name-Daisy" class="text-[10px] text-slate-300 truncate w-full text-center"></span></button>
+          <button type="button" onclick="logoutRole()" title="Rolle wechseln" aria-label="Rolle wechseln" class="p-2 rounded-lg border border-slate-800 text-slate-300 text-xs">🔒</button>
         </div>
       </div>
     </header>
@@ -833,6 +817,22 @@
             <p id="settings-role-subtitle" class="text-xs text-slate-400">Persönliche Optionen & Systemkonfiguration</p>
           </div>
 
+          <details class="mb-4 rounded-xl border border-slate-800 p-3"><summary class="cursor-pointer text-xs text-slate-400">TEST – Diagnosewerkzeuge</summary><div class="flex flex-wrap gap-2 mt-2">              <button id="sync-recovery-test-button" type="button" onclick="recoverOverdueTaskTest()" hidden
+                class="px-2 py-0.5 rounded-lg border border-amber-500/50 text-amber-200 bg-amber-950/50 text-[10px] font-semibold"
+                title="TEST: geprüften Verspätungsvorgang atomar wiederherstellen">Verspätung reparieren</button>
+              <button id="sync-counter-seven-button" type="button" onclick="repairSeventhCounterTest()" hidden
+                class="px-2 py-0.5 rounded-lg border border-amber-500/50 text-amber-200 bg-amber-950/50 text-[10px] font-semibold"
+                title="TEST: nur den geprüften Aufgabenzähler und ggf. fehlende Nummer reparieren">Zähler 7 reparieren</button>
+              <button id="sync-fresh-check-button" type="button" onclick="inspectFreshConflictTest()" hidden
+                class="px-2 py-0.5 rounded-lg border border-sky-500/50 text-sky-200 bg-sky-950/50 text-[10px] font-semibold"
+                title="Konfliktentwurf mit frischem TEST-Serverstand vergleichen, nur lesen">Serverstand prüfen</button>
+              <button id="task-counter-check-button" type="button" onclick="inspectTaskCounterTest()" hidden
+                class="px-2 py-0.5 rounded-lg border border-sky-500/50 text-sky-200 bg-sky-950/50 text-[10px] font-semibold"
+                title="Aufgabennummern und Zähler in TEST nur lesen">Aufgabenzähler prüfen</button>
+              <button id="task-counter-repair-button" type="button" onclick="repairTaskCounterTest()" hidden
+                class="px-2 py-0.5 rounded-lg border border-amber-500/50 text-amber-200 bg-amber-950/50 text-[10px] font-semibold"
+                title="TEST: Fehlende Nummer A-0005 und Zähler nach Sicherheitsprüfung reparieren">Aufgabenzähler reparieren</button>
+</div></details>
           <!-- Sub-Tabs inside Einstellungen -->
           <div id="settings-subtabs" class="flex gap-2 overflow-x-auto no-scrollbar pb-2 mb-5 border-b border-slate-800">
             <!-- Master: Basics, Berechtigungen, Sicherheit | Daisy: Basics only -->
@@ -4199,6 +4199,24 @@
       return 'data:image/svg+xml;charset=utf-8,'+encodeURIComponent(svg);
     }
     function profileAvatarSrc(data) {const v=data?.avatar?.value||'';return v.startsWith('data:image/jpeg;base64,')?v:avatarGraphic(v||avatarGroup(data)+'0');}
+    function openHeaderProfile(role) {
+      if(!currentRole || !['Master','Daisy'].includes(role))return;
+      if(activeTab==='profil' && (profilePerson!==role || document.getElementById('profile-panel-basis').classList.contains('hidden')) && !profileCanLeave())return;
+      switchTab('profil'); if(activeTab!=='profil')return;
+      selectProfilePerson(role);openProfileSection('basis');
+    }
+    function renderHeaderAvatars(){
+      if(!currentRole)return;
+      for(const role of ['Master','Daisy']){
+        const own=role===currentRole, name=getDisplayName(role), img=document.getElementById('header-avatar-'+role), btn=document.getElementById('header-person-'+role);
+        const src=profileAvatarSrc(own?profilePreview:{});
+        if(img.getAttribute('src')!==src)img.src=src;
+        img.style.borderColor=own?'#e5b55c':'#64748b';
+        document.getElementById('header-name-'+role).textContent=name;
+        btn.title=name+(own?' – angemeldete Rolle':' – Profil öffnen')+' (Anwesenheit noch nicht aktiv)';
+        btn.setAttribute('aria-label',btn.title);
+      }
+    }
     function refreshProfileAvatar() {
       const own=profilePerson===currentRole, data=own?(profileDraft||profilePreview):{};
       document.getElementById('profile-avatar').src=profileAvatarSrc(data);
@@ -4248,7 +4266,7 @@
       document.getElementById('profile-edit-start').classList.toggle('hidden',!own||editing);
       document.getElementById('profile-edit-save').classList.toggle('hidden',!editing);
       document.getElementById('profile-edit-cancel').classList.toggle('hidden',!editing);
-      refreshProfileAvatar();
+      refreshProfileAvatar(); renderHeaderAvatars();
       const root=document.getElementById('profile-topic-groups'), key=profilePerson+':'+editing;
       const reference=k=>k==='displayName'?getDisplayName(profilePerson):profilePerson==='Master'?'Master':'Sub';
       if(profileRenderKey===key){root.querySelectorAll('[data-profile-reference]').forEach(el=>el.textContent=reference(el.dataset.profileReference));return;}
